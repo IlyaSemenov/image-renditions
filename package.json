@@ -1,0 +1,87 @@
+{
+  "name": "image-renditions",
+  "version": "0.0.0",
+  "description": "On-demand image transformations that persist every result to durable storage and keep app servers stateless.",
+  "homepage": "https://github.com/IlyaSemenov/image-renditions#readme",
+  "bugs": "https://github.com/IlyaSemenov/image-renditions/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/image-renditions.git"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./fs": "./dist/fs.mjs",
+    "./h3": "./dist/h3.mjs",
+    "./nuxt": "./dist/nuxt.mjs",
+    "./nuxt/runtime": "./dist/nuxt/runtime.mjs",
+    "./s3": "./dist/s3.mjs",
+    "./server": "./dist/server.mjs",
+    "./sharp": "./dist/sharp.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "oxlint --fix && oxfmt",
+    "lint:check": "oxlint && oxfmt --check",
+    "prepare": "lefthook install",
+    "prepublishOnly": "bun run build",
+    "test": "bun test",
+    "test:nuxt": "bun run build && bun tests/nuxt-build.ts",
+    "types": "tsc && tsc -p tests/tsconfig.json && tsc -p tests/h3-v1/tsconfig.json"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "jiti": "^2.7.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@aws-sdk/client-s3": "^3.1150.0",
+    "@changesets/cli": "^3.0.3",
+    "@ilyasemenov/oxc-config": "^0.1.1",
+    "@tsconfig/bun": "^1.0.11",
+    "@types/bun": "^1.4.3",
+    "h3": "^2.0.2",
+    "h3-v1": "npm:h3@^1.15.11",
+    "nuxt": "^4.6.1",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "publint": "^0.3.25",
+    "sharp": "^0.35.5",
+    "tsdown": "^0.23.1",
+    "typescript": "^7.0.2",
+    "vue": "^3.5.44"
+  },
+  "peerDependencies": {
+    "h3": "^1.15.0 || ^2.0.0",
+    "nuxt": "^4.0.0",
+    "sharp": "^0.35.0",
+    "vue": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "h3": {
+      "optional": true
+    },
+    "nuxt": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "packageManager": "bun@1.4.3"
+}
