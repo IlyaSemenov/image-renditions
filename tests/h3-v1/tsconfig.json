@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig",
+  "compilerOptions": {
+    "paths": {
+      "h3": ["../../node_modules/h3-v1"],
+      "image-renditions": ["../../src"],
+      "image-renditions/*": ["../../src/*"]
+    }
+  },
+  "include": ["*.ts"],
+  "exclude": []
+}
