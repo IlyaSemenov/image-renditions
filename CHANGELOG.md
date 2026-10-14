@@ -1,5 +1,13 @@
 # image-renditions
 
+## 0.7.0
+
+### Minor Changes
+
+- 5a5ff73: `onFailure` and `RenditionError` carry `source`, the keys of the target, once the server has resolved them and checked that they are safe.
+- 5a5ff73: `findPublished()` returns the `source` of the target with the `rendition`, if published.
+- b7446d5: Add the `SourceResolver` type of `resolveSource`, for a resolver defined apart from the server.
+
 ## 0.6.0
 
 ### Minor Changes
