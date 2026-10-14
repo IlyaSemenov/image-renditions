@@ -1,5 +1,11 @@
 # image-renditions
 
+## 0.3.0
+
+### Minor Changes
+
+- 00754aa: Recipe hashes in rendition URLs and storage keys are 12 hex digits instead of 32, which renders every rendition again, and `RECIPE_HASH_LENGTH` is no longer exported.
+
 ## 0.2.0
 
 ### Minor Changes
