@@ -181,7 +181,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
      * A source whose extension the preset lists in `originals` gets only the `src` of the source itself.
      * An unsafe path, such as one with a `..` segment, yields no `src`, so stored data never breaks rendering.
      *
-     * @throws {RangeError} When the preset is unknown or has no density 1, or the scope is invalid or not one the catalog declares.
+     * @throws {RangeError} When the preset is unknown, or the scope is invalid or not one the catalog declares.
      */
     function attrs(
       preset: Name,
@@ -200,11 +200,8 @@ export function createRenditionHelpers<Name extends string, Scope extends string
         return { src: originalUrl!(target) }
       }
       const variants = catalog.variants(preset, path)
-      // `src` and the size come from density 1, so a preset without it fails like `url()`.
+      // `src` and the size come from density 1, which every preset has.
       const main = variants.findIndex(({ density }) => density === 1)
-      if (main < 0) {
-        throw new RangeError(`Preset "${preset}" has no density 1.`)
-      }
       const { recipe } = variants[main]!
       const urls = variants.map(variant => formatVariantUrl(variant, target))
       // Without enlargement a small source keeps its own size under `cover` and `fill`, while `contain` always pads the box.

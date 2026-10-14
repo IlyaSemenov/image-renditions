@@ -13,7 +13,7 @@ import { assertBasePath, DEFAULT_BASE_PATH, formatRenditionPath } from "./url"
 
 /** Named transformation in a catalog. */
 export interface PresetDefinition extends RenditionOptions {
-  /** Pixel densities to render, as multipliers of `width` and `height`; defaults to `[1]`. */
+  /** Pixel densities to render, as multipliers of `width` and `height`, which include `1`; defaults to `[1]`. */
   densities?: readonly number[]
   /**
    * Extensions of source files shown as they are instead of rendered, such as `svg`, in lowercase and without the dot.
@@ -197,6 +197,10 @@ export function defineCatalog<const Name extends string, const Scope extends str
     }
     if (densities.length === 0 || new Set(densities).size !== densities.length) {
       throw new RangeError(`Preset "${preset}" must declare unique densities.`)
+    }
+    // The `src` and the size of an image come from density 1.
+    if (!densities.includes(1)) {
+      throw new RangeError(`Preset "${preset}" must include density 1.`)
     }
     if (!originals.every(extension => /^[\da-z]+$/.test(extension))) {
       throw new RangeError(

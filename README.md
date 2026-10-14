@@ -136,7 +136,7 @@ Options of a preset, or of `defaults`, which every preset overrides field by fie
 - `format` — `avif` (default), `webp`, `jpeg` or `png`.
 - `quality` — encoder quality from 1 to 100, by default 50 for `avif` and 80 for `webp` and `jpeg`; `png` is lossless.
 - `effort` — CPU effort of the `avif` (0–9) and `webp` (0–6) encoders, 4 by default; other formats ignore it.
-- `densities` — pixel densities to render, `[1]` by default.
+- `densities` — pixel densities to render, which include `1`; `[1]` by default.
 - `animation` — `first-frame` (default) renders the first frame of animated sources, and `preserve` keeps the animation of GIF and WebP sources; see [Animation](#animation).
 - `originals` — extensions of sources shown as they are, so no option above applies to them; see [Originals](#originals).
 

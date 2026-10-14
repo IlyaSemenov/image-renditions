@@ -368,6 +368,7 @@ describe("validation", () => {
       { width: 64, background: "white" },
       { width: 64, densities: [] },
       { width: 64, densities: [1, 1] },
+      { width: 64, densities: [2] },
       { width: 64, originals: [".svg"] },
       { width: 64, originals: ["SVG"] },
       { width: 64, originals: [""] },
