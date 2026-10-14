@@ -235,6 +235,8 @@ export default defineRenditionEventHandler({
 })
 ```
 
+- The handler calls `getContext` at most once per request.
+  It skips the call for a method other than `GET` and `HEAD`, and, unless `onFailure` is set, for a malformed URL or a scope the catalog does not declare.
 - If `resolveSource` returns `undefined`, the request fails with `404`.
 - Without scopes in the catalog, `resolveSource` receives any scope a URL has, or none, and rejects the ones it does not serve.
 - Map different scopes to different keys even for equal paths.
