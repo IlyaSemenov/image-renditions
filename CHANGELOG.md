@@ -1,5 +1,11 @@
 # image-renditions
 
+## 0.6.0
+
+### Minor Changes
+
+- 21491c4: Add `defineRenditionOriginalUrl()`, auto-imported by the Nuxt module, which types the `originalUrl` composable by the catalog.
+
 ## 0.5.0
 
 ### Minor Changes
