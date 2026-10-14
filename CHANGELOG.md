@@ -1,5 +1,12 @@
 # image-renditions
 
+## 0.5.0
+
+### Minor Changes
+
+- c88d634: Add `useRenditions().attrs(..., { size: false })` to leave out `width` and `height`.
+- e30cdf2: Presets must include density `1` in `densities`.
+
 ## 0.4.0
 
 ### Minor Changes
