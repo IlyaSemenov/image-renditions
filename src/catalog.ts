@@ -1,5 +1,7 @@
 import { hashRecipe } from "./hash"
+import { isSafeScope } from "./path"
 import { normalizeRecipe, type Recipe, type RenditionOptions, type SourcePolicy } from "./recipe"
+import { assertDeclaredScope } from "./scopes"
 import { assertBasePath, DEFAULT_BASE_PATH, formatRenditionPath } from "./url"
 
 /** Named transformation in a catalog. */
@@ -15,7 +17,7 @@ export interface PresetDefinition extends RenditionOptions {
 }
 
 /** Shared configuration of renditions, imported by both the client and the server. */
-export interface CatalogDefinition<Name extends string = string> {
+export interface CatalogDefinition<Name extends string = string, Scope extends string = string> {
   /** Path the rendition handler is mounted at, `/_renditions` by default. */
   basePath?: string
   /** Bumping it gives every variant a new hash, so every rendition is generated again. */
@@ -24,6 +26,12 @@ export interface CatalogDefinition<Name extends string = string> {
   defaults?: PresetDefinition
   /** How special kinds of sources are rendered. */
   sources?: Partial<SourcePolicy>
+  /**
+   * Scopes a logical path can belong to, such as `tenant`; every target then has one of them.
+   *
+   * Without them, a target may have any scope or none.
+   */
+  scopes?: readonly Scope[]
   presets: Record<Name, PresetDefinition>
 }
 
@@ -37,18 +45,30 @@ export interface RenditionVariant {
   readonly hash: string
 }
 
-/** Source a rendition is made from. */
-export interface RenditionTarget {
-  /** Application-defined space of the path, such as a tenant; omitted when the application has one space. */
-  scope?: string
+/**
+ * Source a rendition is made from.
+ *
+ * `Scope` is the union of the scopes a catalog declares, which makes `scope` required, or `string` for a catalog without them.
+ */
+export type RenditionTarget<Scope extends string = string> = {
   /** Logical source path inside the scope. */
   path: string
-}
+} & (string extends Scope
+  ? {
+      /** Application-defined space of the path, such as a tenant; omitted when the application has one space. */
+      scope?: string
+    }
+  : {
+      /** Space of the path, one of the scopes of the catalog. */
+      scope: Scope
+    })
 
 /** Validated catalog with its variants and URL builders. */
-export interface Catalog<Name extends string = string> {
+export interface Catalog<Name extends string = string, Scope extends string = string> {
   readonly basePath: string
   readonly presets: readonly Name[]
+  /** Scopes every target has one of, if the catalog declares them. */
+  readonly scopes?: readonly Scope[]
   /** Variants of a preset ordered by density. */
   variants(preset: Name): readonly RenditionVariant[]
   /**
@@ -74,16 +94,24 @@ export interface Catalog<Name extends string = string> {
   /**
    * Root-relative URL of a rendition.
    *
-   * @throws {RangeError} When the preset is unknown or does not declare the density, or the scope or path is unsafe to put into the URL.
+   * @throws {RangeError} When the preset is unknown or does not declare the density, the scope is not one the catalog declares, or the scope or path is unsafe to put into the URL.
    */
-  url(preset: Name, target: RenditionTarget, density?: number): string
+  url(preset: Name, target: RenditionTarget<Scope>, density?: number): string
   /**
    * `srcset` attribute value listing every density of a preset.
    *
-   * @throws {RangeError} When the preset is unknown, or the scope or path is unsafe to put into the URL.
+   * @throws {RangeError} When the preset is unknown, the scope is not one the catalog declares, or the scope or path is unsafe to put into the URL.
    */
-  srcset(preset: Name, target: RenditionTarget): string
+  srcset(preset: Name, target: RenditionTarget<Scope>): string
 }
+
+// The constraints are structural, because a catalog with scopes is not assignable to `Catalog<string, string>`.
+
+/** Preset names of a catalog, such as `PresetName<typeof catalog>`. */
+export type PresetName<C extends Pick<Catalog, "presets">> = C["presets"][number]
+
+/** Scopes a catalog declares, or `string` when it declares none. */
+export type ScopeName<C extends Pick<Catalog, "scopes">> = NonNullable<C["scopes"]>[number]
 
 /**
  * Validates a catalog and computes the recipe and hash of every preset density.
@@ -92,11 +120,27 @@ export interface Catalog<Name extends string = string> {
  *
  * @throws {RangeError} When the catalog is invalid.
  */
-export function defineCatalog<const Name extends string>(
-  definition: CatalogDefinition<Name>,
-): Catalog<Name> {
+export function defineCatalog<const Name extends string, const Scope extends string = string>(
+  // Scopes given as type arguments must be declared too, or the catalog would not check them.
+  definition: CatalogDefinition<Name, Scope> &
+    (string extends Scope ? unknown : { scopes: readonly Scope[] }),
+): Catalog<Name, Scope> {
   const basePath = definition.basePath ?? DEFAULT_BASE_PATH
   assertBasePath(basePath)
+  const scopes = definition.scopes && Object.freeze([...definition.scopes])
+  if (scopes) {
+    if (scopes.length === 0) {
+      throw new RangeError("Catalog scopes must not be empty.")
+    }
+    for (const [index, scope] of scopes.entries()) {
+      if (!isSafeScope(scope)) {
+        throw new RangeError(`Invalid rendition scope "${scope}".`)
+      }
+      if (scopes.indexOf(scope) !== index) {
+        throw new RangeError(`Duplicate rendition scope "${scope}".`)
+      }
+    }
+  }
   const pipeline = definition.pipelineVersion ?? 1
   const presets = Object.freeze(Object.keys(definition.presets) as Name[])
 
@@ -179,12 +223,14 @@ export function defineCatalog<const Name extends string>(
   }
 
   function variantUrl({ label, hash, recipe }: RenditionVariant, { scope, path }: RenditionTarget) {
+    assertDeclaredScope(scopes, scope)
     return formatRenditionPath(basePath, { scope, label, hash, format: recipe.format, path })
   }
 
-  return Object.freeze<Catalog<Name>>({
+  return Object.freeze<Catalog<Name, Scope>>({
     basePath,
     presets,
+    scopes,
     variants,
     variant,
     originals: preset => presetByName(preset).originals,

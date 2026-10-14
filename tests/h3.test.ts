@@ -13,7 +13,6 @@ function createOptions() {
   const fakes = createFakes()
   fakes.sources.set(`tenant/acme/${target.path}`, new Uint8Array([1]))
   return {
-    catalog,
     server: fakes.createServer(),
     getContext: (event: H3Event) => ({ tenant: event.headers.get("host")!.split(".")[0]! }),
   }

@@ -11,6 +11,7 @@ import type { NuxtModule } from "nuxt/schema"
 
 import type { Catalog } from "../catalog"
 import { isSafeScope } from "../path"
+import { isDeclaredScope } from "../scopes"
 
 /** Options of the `image-renditions/nuxt` module, under the `renditions` key of the Nuxt config. */
 export interface ModuleOptions {
@@ -22,7 +23,7 @@ export interface ModuleOptions {
   catalog?: string
   /** Module whose default export is the h3 event handler of renditions, mounted at the catalog base path. */
   handler?: string
-  /** Scope for `<RenditionImg>` and `useRenditions()`; their `scope` overrides it. */
+  /** Scope for `<RenditionImg>` and `useRenditions()`, one of the catalog scopes if it declares them; their `scope` overrides it. */
   defaultScope?: string
   /**
    * Module whose default export is a composable returning a function that builds the URL of a source shown as it is, such as `~/renditions/original-url`.
@@ -57,6 +58,11 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     const jiti = createJiti(nuxt.options.rootDir, { alias: nuxt.options.alias })
     const catalog = await jiti.import<Catalog>(catalogPath, { default: true })
 
+    if (defaultScope !== undefined && !isDeclaredScope(catalog.scopes, defaultScope)) {
+      throw new Error(
+        `[image-renditions] The default scope "${defaultScope}" is not one of the catalog scopes.`,
+      )
+    }
     if (!originalUrl && catalog.presets.some(preset => catalog.originals(preset).length > 0)) {
       throw new Error(
         "[image-renditions] Set `renditions.originalUrl` to the module building URLs of originals, as a preset of the catalog lists `originals`.",

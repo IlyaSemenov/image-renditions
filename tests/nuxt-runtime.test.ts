@@ -181,3 +181,40 @@ describe("originals", () => {
     expect(() => createRenditionHelpers(logoCatalog)).toThrow("useOriginalUrl")
   })
 })
+
+describe("scopes", () => {
+  const scopedCatalog = defineCatalog({
+    scopes: ["t", "g"],
+    presets: { avatar: { width: 48, height: 48 }, logo: { height: 32, originals: ["svg"] } },
+  })
+
+  test("rejects a default scope the catalog does not declare", () => {
+    expect(() =>
+      createRenditionHelpers(scopedCatalog, {
+        // @ts-expect-error The default scope is not declared.
+        defaultScope: "x",
+        useOriginalUrl: () => () => "",
+      }),
+    ).toThrow(RangeError)
+  })
+
+  test("requires a declared scope in every call, for originals too", () => {
+    let built = 0
+    const { useRenditions } = createRenditionHelpers(scopedCatalog, {
+      useOriginalUrl: () => () => `https://uploads/${built++}`,
+    })
+
+    createSSRApp({}).runWithContext(() => {
+      const renditions = useRenditions()
+      expect(renditions.url("avatar", "a.jpg", { scope: "g" })).toBe(
+        `/base${scopedCatalog.url("avatar", { scope: "g", path: "a.jpg" })}`,
+      )
+      expect(() => renditions.url("avatar", "a.jpg")).toThrow(RangeError)
+      expect(() => renditions.attrs("logo", "a.svg")).toThrow(RangeError)
+      // @ts-expect-error The scope is not declared.
+      expect(() => renditions.url("logo", "a.svg", { scope: "x" })).toThrow(RangeError)
+    })
+
+    expect(built).toBe(0)
+  })
+})

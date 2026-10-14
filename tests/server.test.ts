@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 
-import type { Recipe } from "image-renditions"
+import { defineCatalog, type Recipe } from "image-renditions"
 import { RenditionError } from "image-renditions/server"
 
 import { catalog, createDeferred, createFakes } from "./fakes"
@@ -257,6 +257,25 @@ describe("resolve", () => {
       sourceKey: "uploads/1/photo.jpg",
       resultPrefix: "uploads/1/photo.jpg",
     })
+  })
+
+  test("rejects a scope the catalog does not declare without calling the resolver", async () => {
+    let resolved = 0
+    const server = fakes.createServer({
+      catalog: defineCatalog({ scopes: ["t"], presets: { avatar: { width: 64 } } }),
+      resolveSource: () => {
+        resolved++
+        return { sourceKey: target.path }
+      },
+    })
+
+    const failure = await server
+      // @ts-expect-error The scope is not declared.
+      .resolve({ scope: "g", path: target.path }, tenant)
+      .catch((error: unknown) => error)
+
+    expect((failure as RenditionError).reason).toBe("invalid-request")
+    expect(resolved).toBe(0)
   })
 
   test("rejects targets the resolver does not serve and unsafe resolved keys", async () => {

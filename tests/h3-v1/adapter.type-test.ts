@@ -1,5 +1,4 @@
 import { createApp, createRouter } from "h3"
-import { defineCatalog } from "image-renditions"
 import { defineRenditionEventHandler } from "image-renditions/h3"
 import type { RenditionServer } from "image-renditions/server"
 
@@ -10,7 +9,6 @@ export const app = createApp().use(
   createRouter().use(
     "/_renditions/**",
     defineRenditionEventHandler({
-      catalog: defineCatalog({ presets: { avatar: { width: 48 } } }),
       server,
       getContext: event => ({ path: event.path }),
     }),

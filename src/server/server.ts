@@ -1,8 +1,9 @@
 import { assertInteger } from "../assert"
-import type { RenditionTarget } from "../catalog"
+import type { Catalog, RenditionTarget } from "../catalog"
 import { hashRecipe } from "../hash"
 import { isSafePath } from "../path"
 import { formatExtensions, type Recipe, type RenditionFormat } from "../recipe"
+import { isDeclaredScope } from "../scopes"
 
 import { type Coordinator, createLocalCoordinator } from "./coordinator"
 import { RenditionError } from "./error"
@@ -29,7 +30,9 @@ export interface SourceResolution {
 }
 
 /** Options of {@link createRenditionServer}. */
-export interface RenditionServerOptions<Context> {
+export interface RenditionServerOptions<Context, Scope extends string = string> {
+  /** Catalog of the renditions the server serves, whose scopes type and limit its targets. */
+  catalog: Catalog<string, Scope>
   source: SourceStore
   results: ResultStore
   processor: Processor
@@ -40,10 +43,11 @@ export interface RenditionServerOptions<Context> {
    * Targets of different scopes must map to different locations even when their paths are equal.
    * By default an unscoped path is the source key, and scoped targets are not served.
    */
-  resolveSource?(
-    target: RenditionTarget,
+  // A function property rather than a method makes TypeScript reject a resolver of fewer scopes than the catalog declares, which alone gives the scopes.
+  resolveSource?: (
+    target: RenditionTarget<NoInfer<Scope>>,
     context: Context,
-  ): SourceResolution | undefined | Promise<SourceResolution | undefined>
+  ) => SourceResolution | undefined | Promise<SourceResolution | undefined>
   readiness?: {
     /** Process-local index consulted first. */
     memory?: MemoryReadinessIndexOptions
@@ -85,7 +89,9 @@ export interface Rendition {
 }
 
 /** Generates renditions and finds published ones. */
-export interface RenditionServer<Context> {
+// Function properties rather than methods make TypeScript check parameters strictly, so a server that needs a context cannot pass for one that does not.
+export interface RenditionServer<Context, Scope extends string = string> {
+  readonly catalog: Catalog<string, Scope>
   /**
    * Makes sure the rendition of a target is published and returns it.
    *
@@ -93,7 +99,7 @@ export interface RenditionServer<Context> {
    *
    * @throws {RenditionError} When the rendition cannot be published.
    */
-  ensure(recipe: Recipe, target: RenditionTarget, context: Context): Promise<Rendition>
+  ensure: (recipe: Recipe, target: RenditionTarget<Scope>, context: Context) => Promise<Rendition>
   /**
    * Finds a rendition by recipe hash in the readiness indexes, without any storage call.
    *
@@ -101,21 +107,21 @@ export interface RenditionServer<Context> {
    *
    * @throws {RenditionError} When the target is rejected, with reason `invalid-request`.
    */
-  findPublished(
+  findPublished: (
     hash: string,
     format: RenditionFormat,
-    target: RenditionTarget,
+    target: RenditionTarget<Scope>,
     context: Context,
-  ): Promise<Rendition | undefined>
+  ) => Promise<Rendition | undefined>
   /**
    * Storage locations of a target as `ensure()` uses them, with `resultPrefix` defaulting to `sourceKey`.
    *
-   * It calls `resolveSource` and checks that the keys are safe, but does not check that the source exists.
+   * It checks that the catalog declares the scope, calls `resolveSource` and checks that the keys are safe, but does not check that the source exists.
    * Full rendition keys and the limits of a store are checked only when a rendition is located or stored.
    *
-   * @throws {RenditionError} When the target is rejected or resolves to an unsafe key, with reason `invalid-request`.
+   * @throws {RenditionError} When the scope is not declared, or the target is rejected or resolves to an unsafe key, with reason `invalid-request`.
    */
-  resolve(target: RenditionTarget, context: Context): Promise<Required<SourceResolution>>
+  resolve: (target: RenditionTarget<Scope>, context: Context) => Promise<Required<SourceResolution>>
 }
 
 /** Longest delay of Node timers, in milliseconds. */
@@ -126,10 +132,10 @@ const MAX_TIMEOUT = 2 ** 31 - 1
  *
  * @throws {RangeError} When a limit is not an integer in its range.
  */
-export function createRenditionServer<Context>(
-  options: RenditionServerOptions<Context>,
-): RenditionServer<Context> {
-  const { source, results, processor, resolveSource = resolveUnscoped, onError } = options
+export function createRenditionServer<Context, Scope extends string = string>(
+  options: RenditionServerOptions<Context, Scope>,
+): RenditionServer<Context, Scope> {
+  const { catalog, source, results, processor, resolveSource = resolveUnscoped, onError } = options
   const memory = createMemoryReadinessIndex(options.readiness?.memory)
   const shared = options.readiness?.shared
   const coordinator = options.coordinator ?? createLocalCoordinator()
@@ -147,7 +153,14 @@ export function createRenditionServer<Context>(
   assertInteger("limits.indexTimeout", indexTimeout, 1, MAX_TIMEOUT)
   const limiter = createLimiter({ concurrency, queueSize, queueTimeout })
 
-  async function resolve(target: RenditionTarget, context: Context) {
+  async function resolve(target: RenditionTarget<Scope>, context: Context) {
+    // Requests are checked by the handler, but `ensure()` may get a target from anywhere.
+    if (!isDeclaredScope(catalog.scopes, target.scope)) {
+      throw new RenditionError(
+        "invalid-request",
+        `The scope of the target ${describe(target)} is not declared.`,
+      )
+    }
     const resolution = await resolveSource(target, context)
     if (!resolution) {
       throw new RenditionError("invalid-request", `The target ${describe(target)} is not served.`)
@@ -164,7 +177,7 @@ export function createRenditionServer<Context>(
   async function locate(
     hash: string,
     format: RenditionFormat,
-    target: RenditionTarget,
+    target: RenditionTarget<Scope>,
     context: Context,
   ) {
     const { sourceKey, resultPrefix } = await resolve(target, context)
@@ -241,6 +254,8 @@ export function createRenditionServer<Context>(
   }
 
   return {
+    catalog,
+
     async ensure(input, target, context) {
       // A frozen copy keeps the hash and the rendered recipe consistent if the caller or the processor mutates it.
       const recipe = Object.freeze({ ...input })

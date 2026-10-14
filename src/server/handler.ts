@@ -1,4 +1,5 @@
-import type { Catalog } from "../catalog"
+import type { RenditionTarget } from "../catalog"
+import { toDeclaredTarget } from "../scopes"
 import { parseRenditionPath, type RenditionAddress } from "../url"
 
 import { RenditionError, type RenditionFailureReason } from "./error"
@@ -12,26 +13,31 @@ export interface RenditionRequest {
 }
 
 /** Failed rendition request, as passed to a failure policy. */
-export interface RenditionFailure<Context> {
+export interface RenditionFailure<Context, Scope extends string = string> {
   reason: RenditionFailureReason
   error: RenditionError
   /** Parsed rendition URL, absent when the URL is malformed. */
   address?: RenditionAddress
+  /**
+   * Target of the URL, absent when the URL is malformed or its scope is not one the catalog declares.
+   *
+   * It does not mean that `resolveSource` accepts the target or that the source exists.
+   */
+  target?: RenditionTarget<Scope>
   context: Context
 }
 
 /** Options of {@link createRenditionHandler}. */
-export interface RenditionHandlerOptions<Context> {
-  /** Catalog whose recipes are generated on demand. */
-  catalog: Catalog
-  server: RenditionServer<Context>
+export interface RenditionHandlerOptions<Context, Scope extends string = string> {
+  /** Server whose catalog the handler serves. */
+  server: RenditionServer<Context, Scope>
   /**
    * Builds the response to a failure; `undefined` keeps the default response with a status of the reason.
    *
    * The handler sets `Cache-Control: no-store` on every failure response, including fallbacks such as redirects to the original.
    */
   onFailure?(
-    failure: RenditionFailure<Context>,
+    failure: RenditionFailure<Context, Scope>,
   ): Response | undefined | Promise<Response | undefined>
   /**
    * `Cache-Control` of redirects to published renditions; `public, max-age=86400` by default.
@@ -72,20 +78,27 @@ const failureStatus: Record<RenditionFailureReason, number> = {
  * A hash from the catalog is rendered on demand.
  * An unknown hash is served only when the readiness indexes know its rendition, so arbitrary hashes cost no storage calls.
  */
-export function createRenditionHandler<Context>({
-  catalog,
+export function createRenditionHandler<Context, Scope extends string = string>({
   server,
   onFailure,
   redirectCacheControl = "public, max-age=86400",
-}: RenditionHandlerOptions<Context>): RenditionHandler<Context> {
+}: RenditionHandlerOptions<Context, Scope>): RenditionHandler<Context> {
+  const { catalog } = server
   async function fail(
     error: RenditionError,
     address: RenditionAddress | undefined,
+    target: RenditionTarget<Scope> | undefined,
     getContext: () => Context | Promise<Context>,
   ) {
     const response =
       (onFailure &&
-        (await onFailure({ reason: error.reason, error, address, context: await getContext() }))) ??
+        (await onFailure({
+          reason: error.reason,
+          error,
+          address,
+          target,
+          context: await getContext(),
+        }))) ??
       new Response(error.reason, {
         status: failureStatus[error.reason],
         headers: {
@@ -113,7 +126,18 @@ export function createRenditionHandler<Context>({
     const address = parseRenditionPath(catalog.basePath, path)
     if (!address) {
       const error = new RenditionError("invalid-request", "Malformed rendition URL.")
-      return fail(error, undefined, getContext)
+      return fail(error, undefined, undefined, getContext)
+    }
+    // The server rejects an undeclared scope too, but checking it here skips deriving the context.
+    const target = toDeclaredTarget(catalog.scopes, address.scope, address.path)
+    if (!target) {
+      const error = new RenditionError(
+        "invalid-request",
+        address.scope === undefined
+          ? "The URL has no scope."
+          : `The scope ${address.scope} is not declared.`,
+      )
+      return fail(error, address, undefined, getContext)
     }
     const variant = catalog.findVariant(address.hash)
     // Another extension for a known hash would give one rendition several URLs.
@@ -122,11 +146,10 @@ export function createRenditionHandler<Context>({
         "invalid-request",
         "The extension does not match the recipe format.",
       )
-      return fail(error, address, getContext)
+      return fail(error, address, target, getContext)
     }
     // Resolved outside the try block, so its failures propagate without `onFailure`.
     const context = await getContext()
-    const target = { scope: address.scope, path: address.path }
     try {
       const rendition = variant
         ? await server.ensure(variant.recipe, target, context)
@@ -140,7 +163,7 @@ export function createRenditionHandler<Context>({
       })
     } catch (error) {
       if (error instanceof RenditionError) {
-        return fail(error, address, () => context)
+        return fail(error, address, target, () => context)
       }
       throw error
     }

@@ -11,8 +11,8 @@ import catalog from "#shared/renditions"
 const storage = process.env.RENDITIONS_TEST_STORAGE!
 
 export default defineRenditionEventHandler({
-  catalog,
   server: createRenditionServer({
+    catalog,
     source: createFileSystemSource({ root: join(storage, "uploads") }),
     results: createFileSystemResults({ root: join(storage, "renditions"), publicUrl: "/stored" }),
     processor: createSharpProcessor(),

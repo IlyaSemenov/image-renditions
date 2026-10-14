@@ -22,7 +22,10 @@ interface ContextOptions<Context> {
  *
  * `getContext` may be omitted when the server accepts an `undefined` context.
  */
-export type RenditionEventHandlerOptions<Context> = RenditionHandlerOptions<Context> &
+export type RenditionEventHandlerOptions<
+  Context,
+  Scope extends string = string,
+> = RenditionHandlerOptions<Context, Scope> &
   (undefined extends Context ? Partial<ContextOptions<Context>> : ContextOptions<Context>)
 
 /** Event fields of h3 v1 (`method`, `path`) and h3 v2 (`req`, `url`); h3 v1 also has a Node `req` with an optional method. */
@@ -38,8 +41,8 @@ interface EventLike {
  *
  * Mount it at the catalog base path with a catch-all route, such as `/_renditions/**`.
  */
-export function defineRenditionEventHandler<Context>(
-  options: RenditionEventHandlerOptions<Context>,
+export function defineRenditionEventHandler<Context, Scope extends string = string>(
+  options: RenditionEventHandlerOptions<Context, Scope>,
 ): EventHandler {
   // The declared return type keeps declarations free of handler types that exist in one h3 major version only.
   const handler = createRenditionHandler(options)

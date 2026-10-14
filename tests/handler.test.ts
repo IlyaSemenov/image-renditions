@@ -4,10 +4,11 @@ import { defineCatalog } from "image-renditions"
 import {
   createRenditionHandler,
   RenditionError,
+  type RenditionFailure,
   type RenditionHandlerOptions,
 } from "image-renditions/server"
 
-import { catalog, createDeferred, createFakes, type TestContext } from "./fakes"
+import { catalog, createDeferred, createFakes, resolveSource, type TestContext } from "./fakes"
 
 const tenant = { tenant: "acme" }
 const target = { scope: "t", path: "uploads/1/photo.jpg" }
@@ -20,7 +21,7 @@ beforeEach(() => {
 })
 
 function createHandler(options: Partial<RenditionHandlerOptions<TestContext>> = {}) {
-  return createRenditionHandler<TestContext>({ catalog, server: fakes.createServer(), ...options })
+  return createRenditionHandler<TestContext>({ server: fakes.createServer(), ...options })
 }
 
 function get(handler: ReturnType<typeof createHandler>, path: string) {
@@ -39,13 +40,22 @@ describe("published renditions", () => {
   })
 
   test("keeps serving renditions of a recipe the catalog no longer contains", async () => {
-    const server = fakes.createServer()
+    const published = new Set<string>()
+    const readiness = {
+      shared: {
+        has: (url: string) => published.has(url),
+        add: (url: string) => void published.add(url),
+      },
+    }
     const url = catalog.url("avatar", target)
-    await get(createRenditionHandler({ catalog, server }), url)
+    await get(createRenditionHandler({ server: fakes.createServer({ readiness }) }), url)
     const changed = defineCatalog({ presets: { avatar: { width: 65, height: 65 } } })
     const before = fakes.storageCalls()
 
-    const response = await get(createRenditionHandler({ catalog: changed, server }), url)
+    const response = await get(
+      createRenditionHandler({ server: fakes.createServer({ catalog: changed, readiness }) }),
+      url,
+    )
 
     expect(response.status).toBe(307)
     expect(fakes.storageCalls()).toBe(before)
@@ -122,7 +132,7 @@ describe("failures", () => {
 
   test("answers overload with a retryable status", async () => {
     const server = fakes.createServer({ limits: { concurrency: 1, queueSize: 0 } })
-    const handler = createRenditionHandler({ catalog, server })
+    const handler = createRenditionHandler({ server })
     const processing = createDeferred()
     fakes.control.processing = processing.promise
     fakes.sources.set("tenant/acme/uploads/2/other.jpg", new Uint8Array([2]))
@@ -186,5 +196,63 @@ describe("context", () => {
 
     await expect(response).rejects.toBe(failure)
     expect(onFailure).not.toHaveBeenCalled()
+  })
+})
+
+describe("catalog scopes", () => {
+  const scopedCatalog = defineCatalog({
+    scopes: ["t", "g"],
+    presets: { avatar: { width: 64, height: 64 } },
+  })
+  const url = scopedCatalog.url("avatar", { scope: "t", path: target.path })
+
+  function createScopedHandler() {
+    const resolved: unknown[] = []
+    const failures: RenditionFailure<TestContext, "t" | "g">[] = []
+    const handler = createRenditionHandler({
+      server: fakes.createServer({
+        catalog: scopedCatalog,
+        resolveSource(target, context) {
+          resolved.push(target)
+          return resolveSource(target, context)
+        },
+      }),
+      onFailure(failure) {
+        failures.push(failure)
+        return undefined
+      },
+    })
+    return { handler, resolved, failures }
+  }
+
+  test("serves urls of declared scopes", async () => {
+    const { handler } = createScopedHandler()
+
+    expect((await get(handler, url)).status).toBe(307)
+  })
+
+  test("rejects urls of other scopes or none before resolving their targets", async () => {
+    const { handler, resolved, failures } = createScopedHandler()
+
+    for (const path of [url.replace("/v1/t/", "/v1/x/"), url.replace("/v1/t/", "/v1/")]) {
+      const response = await get(handler, path)
+      expect(response.status).toBe(404)
+      expect(await response.text()).toBe("invalid-request")
+    }
+
+    expect(resolved).toEqual([])
+    expect(fakes.storageCalls()).toBe(0)
+    expect(failures.map(({ address, target }) => [address?.path, target])).toEqual([
+      [target.path, undefined],
+      [target.path, undefined],
+    ])
+  })
+
+  test("passes the target of a url with a declared scope to onFailure", async () => {
+    const { handler, failures } = createScopedHandler()
+
+    await get(handler, url.replace(".avif/", ".webp/"))
+
+    expect(failures[0]?.target).toEqual({ scope: "t", path: target.path })
   })
 })

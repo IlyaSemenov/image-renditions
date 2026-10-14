@@ -46,6 +46,7 @@ export function createFakes() {
   }
 
   const options = {
+    catalog,
     source: {
       async read(key) {
         calls.read++
@@ -70,8 +71,14 @@ export function createFakes() {
     resolveSource,
   } satisfies RenditionServerOptions<TestContext>
 
-  function createServer(overrides: Partial<RenditionServerOptions<TestContext>> = {}) {
-    return createRenditionServer<TestContext>({ ...options, ...overrides })
+  function createServer<Scope extends string = string>(
+    overrides: Partial<RenditionServerOptions<TestContext, Scope>> = {},
+  ) {
+    // The default catalog declares no scopes, so it serves as a catalog of any.
+    return createRenditionServer<TestContext, Scope>({
+      ...(options as unknown as RenditionServerOptions<TestContext, Scope>),
+      ...overrides,
+    })
   }
 
   function storageCalls() {

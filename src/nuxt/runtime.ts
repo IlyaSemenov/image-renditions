@@ -3,6 +3,7 @@ import { defineComponent, h, type PropType } from "vue"
 
 import type { Catalog, RenditionTarget } from "../catalog"
 import { isSafePath, isSafeScope } from "../path"
+import { assertDeclaredScope, isDeclaredScope, toDeclaredTarget } from "../scopes"
 
 /** Attributes of an `img` element showing a rendition. */
 export interface RenditionImgAttrs {
@@ -14,23 +15,23 @@ export interface RenditionImgAttrs {
 }
 
 /** Options of a rendition URL. */
-export interface RenditionUrlOptions {
+export interface RenditionUrlOptions<Scope extends string = string> {
   /** Scope of the path; defaults to the module's `defaultScope`. */
-  scope?: string
+  scope?: Scope
   /** Density of the variant; defaults to `1`. */
   density?: number
 }
 
 /** Options of {@link createRenditionHelpers}. */
-export interface RenditionHelpersOptions {
+export interface RenditionHelpersOptions<Scope extends string = string> {
   /** Scope of calls that set none. */
-  defaultScope?: string
+  defaultScope?: Scope
   /**
    * Composable returning a function that builds the URL of a source shown as it is; required when a preset lists `originals`.
    *
    * The function receives a safe logical path, which it must encode.
    */
-  useOriginalUrl?: () => (target: RenditionTarget) => string
+  useOriginalUrl?: () => (target: RenditionTarget<Scope>) => string
 }
 
 /**
@@ -39,15 +40,20 @@ export interface RenditionHelpersOptions {
  * The Nuxt module calls it in a generated module; applications use the generated helpers.
  *
  * @throws {Error} When a preset lists `originals` and `useOriginalUrl` is missing.
+ * @throws {RangeError} When `defaultScope` is not one of the scopes the catalog declares.
  */
-export function createRenditionHelpers<Name extends string>(
-  catalog: Catalog<Name>,
-  { defaultScope, useOriginalUrl }: RenditionHelpersOptions = {},
+export function createRenditionHelpers<Name extends string, Scope extends string = string>(
+  catalog: Catalog<Name, Scope>,
+  // The scopes are inferred from the catalog alone, so a default scope it does not declare fails to compile.
+  { defaultScope, useOriginalUrl }: RenditionHelpersOptions<NoInfer<Scope>> = {},
 ) {
   if (!useOriginalUrl && catalog.presets.some(preset => catalog.originals(preset).length > 0)) {
     throw new Error(
       "[image-renditions] Pass `useOriginalUrl`, as a preset of the catalog lists `originals`.",
     )
+  }
+  if (defaultScope !== undefined && !isDeclaredScope(catalog.scopes, defaultScope)) {
+    throw new RangeError(`Undeclared default rendition scope "${defaultScope}".`)
   }
 
   /** Builds rendition URLs below the application base URL. */
@@ -62,7 +68,10 @@ export function createRenditionHelpers<Name extends string>(
      *
      * The scope is checked here because the URL of an original does not go through the rendition URL builder, which checks it too.
      */
-    function resolveTarget(path: string, scope: string | undefined): RenditionTarget | undefined {
+    function resolveTarget(
+      path: string,
+      scope: Scope | undefined,
+    ): RenditionTarget<Scope> | undefined {
       if (!isSafePath(path)) {
         return undefined
       }
@@ -70,14 +79,15 @@ export function createRenditionHelpers<Name extends string>(
       if (resolved !== undefined && !isSafeScope(resolved)) {
         throw new RangeError(`Invalid rendition scope "${resolved}".`)
       }
-      return { scope: resolved, path }
+      assertDeclaredScope(catalog.scopes, resolved)
+      return toDeclaredTarget(catalog.scopes, resolved, path)!
     }
 
-    function formatUrl(preset: Name, target: RenditionTarget, density?: number) {
+    function formatUrl(preset: Name, target: RenditionTarget<Scope>, density?: number) {
       return base + catalog.url(preset, target, density)
     }
 
-    function formatSrcset(preset: Name, target: RenditionTarget) {
+    function formatSrcset(preset: Name, target: RenditionTarget<Scope>) {
       return catalog
         .variants(preset)
         .map(({ density }) => `${formatUrl(preset, target, density)} ${density}x`)
@@ -89,12 +99,12 @@ export function createRenditionHelpers<Name extends string>(
      *
      * Returns `undefined` for an unsafe path, such as one with a `..` segment, so stored data never breaks rendering.
      *
-     * @throws {RangeError} When the preset is unknown or does not declare the density, or the scope is invalid.
+     * @throws {RangeError} When the preset is unknown or does not declare the density, or the scope is invalid or not one the catalog declares.
      */
     function url(
       preset: Name,
       path: string,
-      { scope, density }: RenditionUrlOptions = {},
+      { scope, density }: RenditionUrlOptions<Scope> = {},
     ): string | undefined {
       const target = resolveTarget(path, scope)
       if (!target) {
@@ -113,12 +123,12 @@ export function createRenditionHelpers<Name extends string>(
      *
      * Returns `undefined` for an unsafe path, like `url()`, and for a source shown as it is, which has no densities.
      *
-     * @throws {RangeError} When the preset is unknown, or the scope is invalid.
+     * @throws {RangeError} When the preset is unknown, or the scope is invalid or not one the catalog declares.
      */
     function srcset(
       preset: Name,
       path: string,
-      { scope }: Pick<RenditionUrlOptions, "scope"> = {},
+      { scope }: Pick<RenditionUrlOptions<Scope>, "scope"> = {},
     ): string | undefined {
       const target = resolveTarget(path, scope)
       return target && !catalog.isOriginal(preset, path) ? formatSrcset(preset, target) : undefined
@@ -135,7 +145,7 @@ export function createRenditionHelpers<Name extends string>(
     function attrs(
       preset: Name,
       path: string,
-      { scope }: Pick<RenditionUrlOptions, "scope"> = {},
+      { scope }: Pick<RenditionUrlOptions<Scope>, "scope"> = {},
     ): RenditionImgAttrs {
       if (/^(?:[a-z][\d+.a-z-]*:|\/\/)/i.test(path)) {
         return { src: path }
@@ -176,7 +186,7 @@ export function createRenditionHelpers<Name extends string>(
       preset: { type: String as unknown as PropType<Name>, required: true },
       /** Logical source path inside the scope, or a URL shown as is. */
       src: { type: String, required: true },
-      scope: { type: String, default: undefined },
+      scope: { type: String as unknown as PropType<Scope>, default: undefined },
     },
     setup(props) {
       const renditions = useRenditions()

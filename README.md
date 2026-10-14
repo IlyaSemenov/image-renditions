@@ -73,6 +73,7 @@ import catalog from "#shared/renditions"
 const client = new S3({ region: "us-east-1" })
 
 const server = createRenditionServer({
+  catalog,
   source: createS3Source({ client, bucket: "uploads" }),
   results: createS3Results({
     client,
@@ -82,7 +83,7 @@ const server = createRenditionServer({
   processor: createSharpProcessor(),
 })
 
-export default defineRenditionEventHandler({ catalog, server })
+export default defineRenditionEventHandler({ server })
 ```
 
 A rendition of `avatars/42.jpg` is stored in `renditions` at `avatars/42.jpg/<hash>.avif`, and `publicUrl` is where browsers load it from.
@@ -185,25 +186,37 @@ Scopes and `resolveSource` let the server decide where a path lives:
 
 Without `resolveSource`, an unscoped path is the key itself, and scoped paths are rejected.
 
-For example, with uploads of several tenants and files shared between them:
+For example, with uploads of several tenants and files shared between them, declare both scopes in the catalog:
+
+```ts
+// shared/renditions.ts
+export default defineCatalog({
+  scopes: ["tenant", "shared"],
+  presets: {
+    // ...
+  },
+})
+```
+
+- Scope names are type-checked against the catalog, like preset names.
+- `catalog.url()` requires a scope.
+  `useRenditions()` and `<RenditionImg>` use the module's `defaultScope` when a call has no scope, and throw a `RangeError` when there is neither.
+- The server rejects a target with another scope or no scope as `invalid-request`, so `resolveSource` receives only the declared scopes.
+- `ScopeName<typeof catalog>` is the union of the scopes, and `PresetName<typeof catalog>` is the union of the preset names.
+
+The catalog of the server types the scopes `resolveSource` receives, so it handles each of them:
 
 ```ts
 // server/renditions.ts
-const server = createRenditionServer<{ tenant: string }>({
+const server = createRenditionServer({
+  catalog,
   // source, results and processor as in the quick start
-  resolveSource({ scope, path }, { tenant }) {
-    if (scope === "tenant") {
-      return { sourceKey: `tenants/${tenant}/${path}` }
-    }
-    if (scope === "shared") {
-      return { sourceKey: `shared/${path}` }
-    }
-    return undefined
+  resolveSource({ scope, path }, { tenant }: { tenant: string }) {
+    return { sourceKey: scope === "tenant" ? `tenants/${tenant}/${path}` : `shared/${path}` }
   },
 })
 
 export default defineRenditionEventHandler({
-  catalog,
   server,
   // findTenant() is your lookup, for example by host.
   getContext: async event => ({ tenant: await findTenant(event) }),
@@ -211,7 +224,7 @@ export default defineRenditionEventHandler({
 ```
 
 - If `resolveSource` returns `undefined`, the request fails with `404`.
-- `resolveSource` receives unscoped paths too, with an undefined `scope`.
+- Without scopes in the catalog, `resolveSource` receives any scope a URL has, or none, and rejects the ones it does not serve.
 - Map different scopes to different keys even for equal paths.
 - A rendition is stored in the result store at `<sourceKey>/<hash>.<extension>`.
   To keep renditions in the bucket of uploads, also return a `resultPrefix` that no source key starts with, such as `` `renditions/${sourceKey}` ``, to use instead of `sourceKey`.
@@ -221,7 +234,7 @@ export default defineRenditionEventHandler({
 Derive the context from the URL only, host included, for example from the tenant's domain: browsers and CDNs cache the redirect to a rendition by its URL for a day.
 If the context depends on cookies or a session, pass `redirectCacheControl: "no-store"` to `defineRenditionEventHandler()`, or one tenant may get the rendition of another.
 
-With the Nuxt module, `defaultScope: "tenant"` makes `tenant` the scope of every image, and `scope` selects another one:
+With the Nuxt module, `defaultScope: "tenant"` makes `tenant` the scope of every image, and `scope` selects another one; the build fails when the catalog declares scopes without the default one:
 
 ```vue
 <RenditionImg preset="cover" :src="template.coverPath" scope="shared" alt="" />
@@ -303,6 +316,7 @@ import { createS3Results, createS3Source } from "image-renditions/s3"
 const client = new S3({ region: "us-east-1" })
 
 const server = createRenditionServer({
+  catalog,
   source: createS3Source({ client, bucket: "uploads" }),
   results: createS3Results({
     client,
@@ -326,6 +340,7 @@ To keep uploads and renditions on a disk served by a web server, use the stores 
 import { createFileSystemResults, createFileSystemSource } from "image-renditions/fs"
 
 const server = createRenditionServer({
+  catalog,
   source: createFileSystemSource({ root: "/data/uploads" }),
   results: createFileSystemResults({ root: "/data/renditions", publicUrl: "/renditions" }),
   processor: createSharpProcessor(),
@@ -371,7 +386,7 @@ It takes the same options without `getContext` and returns a function from the r
 // server.ts
 import { createRenditionHandler } from "image-renditions/server"
 
-const renditions = createRenditionHandler({ catalog, server })
+const renditions = createRenditionHandler({ server })
 
 export default {
   fetch(request: Request) {
@@ -481,16 +496,15 @@ Otherwise the request fails as `unknown-recipe` without calling the stores, so m
 
 ```ts
 export default defineRenditionEventHandler({
-  catalog,
   server,
   getContext,
-  async onFailure({ reason, error, address, context }) {
+  async onFailure({ reason, error, target, context }) {
     if (reason === "storage-error" || reason === "processing-failed") {
       reportError(error)
     }
-    if (reason === "unknown-recipe" && address) {
+    if (reason === "unknown-recipe" && target) {
       // Here sources are public, so an outdated URL shows the original instead.
-      const { sourceKey } = await server.resolve(address, context)
+      const { sourceKey } = await server.resolve(target, context)
       return Response.redirect(`https://uploads.example.com/${encodePath(sourceKey)}`, 302)
     }
     return undefined
@@ -498,7 +512,8 @@ export default defineRenditionEventHandler({
 })
 ```
 
-`server.resolve()` returns the keys a target resolves to with `resolveSource`, after checking that they are safe.
+- `target` is the target of the URL, absent when the URL is malformed or its scope is not declared.
+- `server.resolve()` returns the keys a target resolves to with `resolveSource`, after checking that they are safe.
 
 Returning `undefined` keeps the default response.
 Every failure response, including a replaced one, is sent with `Cache-Control: no-store`.

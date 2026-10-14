@@ -189,6 +189,26 @@ describe("urls", () => {
   })
 })
 
+describe("scopes", () => {
+  const catalog = defineCatalog({
+    scopes: ["tenant", "global"],
+    presets: { avatar: { width: 64, densities: [1, 2] } },
+  })
+
+  it("builds urls of declared scopes", () => {
+    const url = catalog.url("avatar", { scope: "global", path: "a.jpg" })
+
+    expect(parseRenditionPath(catalog.basePath, url)?.scope).toBe("global")
+  })
+
+  it("rejects targets without a declared scope", () => {
+    // @ts-expect-error A catalog with scopes requires one in every target.
+    expect(() => catalog.url("avatar", { path: "a.jpg" })).toThrow(RangeError)
+    // @ts-expect-error The scope is not declared.
+    expect(() => catalog.srcset("avatar", { scope: "other", path: "a.jpg" })).toThrow(RangeError)
+  })
+})
+
 describe("originals", () => {
   it("inherits originals from defaults unless a preset overrides them", () => {
     const catalog = defineCatalog({
@@ -248,6 +268,9 @@ describe("validation", () => {
     }
     expect(() => defineCatalog({ presets: { "a.b": { width: 64 } } })).toThrow(RangeError)
     expect(() => defineCatalog({ basePath: "/img/", presets: {} })).toThrow(RangeError)
+    for (const scopes of [[], ["a", "a"], ["a/b"]]) {
+      expect(() => defineCatalog({ scopes, presets: {} })).toThrow(RangeError)
+    }
   })
 
   it("ignores an effort in range for formats without one, as defaults apply to every preset", () => {
