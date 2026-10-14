@@ -9,6 +9,7 @@ import {
   createRenditionHandler,
   createRenditionServer,
   type RenditionServerOptions,
+  type SourceResolver,
 } from "image-renditions/server"
 
 interface Context {
@@ -50,6 +51,20 @@ export const server = createRenditionServer({
 export const handler = defineRenditionEventHandler({
   server,
   getContext: () => ({ tenant: "acme" }),
+})
+
+// A resolver defined apart from the server gets its parameter and result types from `SourceResolver`.
+const separateResolver: SourceResolver<Context, ScopeName<typeof scoped>> = (
+  { scope, path },
+  { tenant },
+) => {
+  const declared: "tenant" | "global" = scope
+  return { sourceKey: declared === "tenant" ? `${tenant}/${path}` : path }
+}
+export const separateServer = createRenditionServer({
+  catalog: scoped,
+  ...stores,
+  resolveSource: separateResolver,
 })
 
 export const tenantResolver = createRenditionServer({

@@ -29,6 +29,16 @@ export interface SourceResolution {
   resultPrefix?: string
 }
 
+/**
+ * Function of {@link RenditionServerOptions.resolveSource}, which maps a target to storage locations within the application context.
+ *
+ * It types a resolver defined apart from the server, such as in a module of its own.
+ */
+export type SourceResolver<Context, Scope extends string = string> = (
+  target: RenditionTarget<Scope>,
+  context: Context,
+) => SourceResolution | undefined | Promise<SourceResolution | undefined>
+
 /** Options of {@link createRenditionServer}. */
 export interface RenditionServerOptions<Context, Scope extends string = string> {
   /** Catalog of the renditions the server serves, whose scopes type and limit its targets. */
@@ -44,10 +54,7 @@ export interface RenditionServerOptions<Context, Scope extends string = string> 
    * By default an unscoped path is the source key, and scoped targets are not served.
    */
   // A function property rather than a method makes TypeScript reject a resolver of fewer scopes than the catalog declares, which alone gives the scopes.
-  resolveSource?: (
-    target: RenditionTarget<NoInfer<Scope>>,
-    context: Context,
-  ) => SourceResolution | undefined | Promise<SourceResolution | undefined>
+  resolveSource?: SourceResolver<Context, NoInfer<Scope>>
   readiness?: {
     /** Process-local index consulted first. */
     memory?: MemoryReadinessIndexOptions

@@ -240,6 +240,7 @@ export default defineRenditionEventHandler({
 - If `resolveSource` returns `undefined`, the request fails with `404`.
 - Without scopes in the catalog, `resolveSource` receives any scope a URL has, or none, and rejects the ones it does not serve.
 - Map different scopes to different keys even for equal paths.
+- To define `resolveSource` apart from the server, for example to test it, type it as `SourceResolver<Context, ScopeName<typeof catalog>>` from `image-renditions/server`.
 - A rendition is stored in the result store at `<sourceKey>/<hash>.<extension>`.
   To keep renditions in the bucket of uploads, also return a `resultPrefix` that no source key starts with, such as `` `renditions/${sourceKey}` ``, to use instead of `sourceKey`.
 - S3 limits a key to 1024 bytes in UTF-8, and the library writes a rendition under a key up to 18 bytes longer than its result prefix.
