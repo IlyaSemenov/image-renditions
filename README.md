@@ -144,7 +144,7 @@ Renaming a preset keeps its stored renditions.
 `<RenditionImg>` renders `src`, and a `srcset` when the preset has several densities.
 
 - It also renders `width` and `height` when the image always has the preset size: with `contain`, or with `cover` and `fill` when `enlarge` is set.
-  Otherwise a small source keeps its own size, so size such images with CSS.
+  It renders neither for other presets, including ones that set a single side, so size their images with CSS.
 - A `src` that is already a URL, such as `blob:` or `https:`, renders unchanged, for example a preview of a file being uploaded.
 - An unsafe path, such as one with a `..` segment, renders no `src` instead of breaking the page.
 - A source whose extension the preset lists in [`originals`](#originals) renders as it is.
