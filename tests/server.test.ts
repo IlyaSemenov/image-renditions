@@ -239,6 +239,43 @@ describe("findPublished", () => {
   })
 })
 
+describe("resolve", () => {
+  test("returns the keys of a target without storage calls", async () => {
+    const server = fakes.createServer()
+
+    expect(await server.resolve(target, tenant)).toEqual({
+      sourceKey: "tenant/acme/uploads/1/photo.jpg",
+      resultPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
+    })
+    expect(fakes.storageCalls()).toBe(0)
+  })
+
+  test("defaults the result prefix to the source key", async () => {
+    const server = fakes.createServer({ resolveSource: undefined })
+
+    expect(await server.resolve({ path: "uploads/1/photo.jpg" }, tenant)).toEqual({
+      sourceKey: "uploads/1/photo.jpg",
+      resultPrefix: "uploads/1/photo.jpg",
+    })
+  })
+
+  test("rejects targets the resolver does not serve and unsafe resolved keys", async () => {
+    const resolutions = [
+      undefined,
+      { sourceKey: "a/../b" },
+      { sourceKey: "uploads/1/photo.jpg", resultPrefix: "derived/" },
+    ]
+    for (const resolution of resolutions) {
+      const error = await fakes
+        .createServer({ resolveSource: () => resolution })
+        .resolve(target, tenant)
+        .catch((error: unknown) => error)
+
+      expect((error as RenditionError).reason).toBe("invalid-request")
+    }
+  })
+})
+
 describe("limits", () => {
   const paths = ["uploads/1/a.jpg", "uploads/1/b.jpg", "uploads/1/c.jpg"]
 

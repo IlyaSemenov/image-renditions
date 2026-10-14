@@ -483,18 +483,21 @@ export default defineRenditionEventHandler({
   catalog,
   server,
   getContext,
-  onFailure({ reason, error, address, context }) {
+  async onFailure({ reason, error, address, context }) {
     if (reason === "storage-error" || reason === "processing-failed") {
       reportError(error)
     }
     if (reason === "unknown-recipe" && address) {
-      // originalUrl() is your absolute URL of the uploaded file at the scope and path of the address.
-      return Response.redirect(originalUrl(address, context), 302)
+      // Here sources are public, so an outdated URL shows the original instead.
+      const { sourceKey } = await server.resolve(address, context)
+      return Response.redirect(`https://uploads.example.com/${encodePath(sourceKey)}`, 302)
     }
     return undefined
   },
 })
 ```
+
+`server.resolve()` returns the keys a target resolves to with `resolveSource`, after checking that they are safe.
 
 Returning `undefined` keeps the default response.
 Every failure response, including a replaced one, is sent with `Cache-Control: no-store`.
@@ -518,7 +521,7 @@ The built-in stores and processor implement the same interfaces and serve as exa
   Keep private images out of what `resolveSource` maps, for example by serving only the folders of public images.
 - A source must never change under its key: renditions of a replaced source keep showing the old image.
   Store new content under a new key.
-- Deleting a source leaves its renditions in storage under its result prefix.
+- Deleting a source leaves its renditions in storage under its result prefix, which `server.resolve()` returns.
 - A rendition of an animated source shows its first frame, a rendition of an SVG source is rasterized at the target size, and EXIF orientation is applied.
   A preset shows such sources as they are when it lists their extensions in [`originals`](#originals).
 - Source paths are limited to 1024 characters.

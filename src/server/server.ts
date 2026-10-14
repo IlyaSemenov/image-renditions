@@ -107,6 +107,15 @@ export interface RenditionServer<Context> {
     target: RenditionTarget,
     context: Context,
   ): Promise<Rendition | undefined>
+  /**
+   * Storage locations of a target as `ensure()` uses them, with `resultPrefix` defaulting to `sourceKey`.
+   *
+   * It calls `resolveSource` and checks that the keys are safe, but does not check that the source exists.
+   * Full rendition keys and the limits of a store are checked only when a rendition is located or stored.
+   *
+   * @throws {RenditionError} Of reason `invalid-request` when the target is rejected or resolves to an unsafe key.
+   */
+  resolve(target: RenditionTarget, context: Context): Promise<Required<SourceResolution>>
 }
 
 /** Longest delay of Node timers, in milliseconds. */
@@ -138,26 +147,33 @@ export function createRenditionServer<Context>(
   assertInteger("limits.indexTimeout", indexTimeout, 1, MAX_TIMEOUT)
   const limiter = createLimiter({ concurrency, queueSize, queueTimeout })
 
+  async function resolve(target: RenditionTarget, context: Context) {
+    const resolution = await resolveSource(target, context)
+    if (!resolution) {
+      throw new RenditionError("invalid-request", `The target ${describe(target)} is not served.`)
+    }
+    const { sourceKey } = resolution
+    const resultPrefix = resolution.resultPrefix ?? sourceKey
+    // Keys come from application code, so they are checked like client input to keep storage paths unambiguous.
+    if (!isSafePath(sourceKey) || !isSafePath(resultPrefix)) {
+      throw createUnsafeKeyError(target)
+    }
+    return { sourceKey, resultPrefix }
+  }
+
   async function locate(
     hash: string,
     format: RenditionFormat,
     target: RenditionTarget,
     context: Context,
   ) {
-    const resolution = await resolveSource(target, context)
-    if (!resolution) {
-      throw new RenditionError("invalid-request", `The target ${describe(target)} is not served.`)
+    const { sourceKey, resultPrefix } = await resolve(target, context)
+    const key = `${resultPrefix}/${hash}.${formatExtensions[format]}`
+    // A safe prefix can still make the full key too long.
+    if (!isSafePath(key)) {
+      throw createUnsafeKeyError(target)
     }
-    const prefix = resolution.resultPrefix ?? resolution.sourceKey
-    const key = `${prefix}/${hash}.${formatExtensions[format]}`
-    // Keys come from application code, so they are checked like client input to keep storage paths unambiguous.
-    if (!isSafePath(resolution.sourceKey) || !isSafePath(key)) {
-      throw new RenditionError(
-        "invalid-request",
-        `The target ${describe(target)} resolves to an unsafe key.`,
-      )
-    }
-    return { sourceKey: resolution.sourceKey, rendition: { key, url: results.url(key) } }
+    return { sourceKey, rendition: { key, url: results.url(key) } }
   }
 
   async function isIndexed(url: string) {
@@ -252,6 +268,8 @@ export function createRenditionServer<Context>(
       const { rendition } = await locate(hash, format, target, context)
       return (await isIndexed(rendition.url)) ? rendition : undefined
     },
+
+    resolve,
   }
 }
 
@@ -278,4 +296,11 @@ function resolveUnscoped({ scope, path }: RenditionTarget): SourceResolution | u
 
 function describe({ scope, path }: RenditionTarget) {
   return scope === undefined ? path : `${scope}:${path}`
+}
+
+function createUnsafeKeyError(target: RenditionTarget) {
+  return new RenditionError(
+    "invalid-request",
+    `The target ${describe(target)} resolves to an unsafe key.`,
+  )
 }
