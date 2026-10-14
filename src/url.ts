@@ -30,18 +30,40 @@ export function formatRenditionPath(
   { scope, label, hash, format, path }: RenditionAddress,
 ): string {
   assertBasePath(basePath)
-  if (scope !== undefined && !isSafeScope(scope)) {
-    throw new RangeError(`Invalid rendition scope "${scope}".`)
-  }
+  assertSafeTarget(scope, path)
   const extension = formatExtensions[format]
   if (!isSafeLabel(label) || !isHash(hash) || !extension) {
     throw new RangeError(`Invalid rendition variant "${label}.${hash}.${extension ?? format}".`)
   }
+  return joinRenditionPath(basePath, { scope, label, hash, format }, encodePath(path))
+}
+
+/**
+ * Checks that a scope and a source path are safe to put into a rendition URL.
+ *
+ * @throws {RangeError} When the scope or the path is unsafe.
+ */
+export function assertSafeTarget(scope: string | undefined, path: string): void {
+  if (scope !== undefined && !isSafeScope(scope)) {
+    throw new RangeError(`Invalid rendition scope "${scope}".`)
+  }
   if (!isSafePath(path)) {
     throw new RangeError(`Unsafe rendition source path "${path}".`)
   }
+}
+
+/**
+ * Joins the parts of a rendition URL path without checking them, with the source path already encoded.
+ *
+ * It serves parts checked once for several URLs, such as the variants of a catalog for one target.
+ */
+export function joinRenditionPath(
+  basePath: string,
+  { scope, label, hash, format }: Omit<RenditionAddress, "path">,
+  encodedPath: string,
+): string {
   const scopePrefix = scope === undefined ? "" : `${scope}/`
-  return `${basePath}/${URL_FORMAT_VERSION}/${scopePrefix}${label}.${hash}.${extension}/${encodePath(path)}`
+  return `${basePath}/${URL_FORMAT_VERSION}/${scopePrefix}${label}.${hash}.${formatExtensions[format]}/${encodedPath}`
 }
 
 /**
@@ -91,7 +113,8 @@ export function assertBasePath(basePath: string): void {
 
 const formats = Object.keys(formatExtensions) as RenditionFormat[]
 
-function isSafeLabel(label: string) {
+/** Checks that a variant label is 1 to 64 characters that need no encoding in a URL. */
+export function isSafeLabel(label: string): boolean {
   return /^[\w@.-]{1,64}$/.test(label)
 }
 

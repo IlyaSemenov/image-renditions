@@ -2,9 +2,9 @@ import { useRuntimeConfig } from "nuxt/app"
 import { defineComponent, h, type PropType } from "vue"
 
 import type { Catalog, RenditionTarget, RenditionVariant } from "../catalog"
-import { isSafePath, isSafeScope } from "../path"
+import { encodePath, isSafePath, isSafeScope } from "../path"
 import { assertDeclaredScope, isDeclaredScope, toDeclaredTarget } from "../scopes"
-import { formatRenditionPath } from "../url"
+import { joinRenditionPath } from "../url"
 
 import { findRenditionAttr } from "./img-attrs"
 
@@ -94,7 +94,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     /**
      * Target of a path in the scope of a call, or `undefined` for an unsafe path.
      *
-     * The scope is checked here, since the URLs below are built from variants or by `useOriginalUrl` rather than by `catalog.url()`, which would check it.
+     * The path and the scope are checked here once, since the URLs below are joined from them or built by `useOriginalUrl` rather than by `catalog.url()`, which would check them.
      */
     function resolveTarget(
       path: string,
@@ -107,19 +107,41 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       if (resolved !== undefined && !isSafeScope(resolved)) {
         throw new RangeError(`Invalid rendition scope "${resolved}".`)
       }
-      assertDeclaredScope(catalog.scopes, resolved)
-      return toDeclaredTarget(catalog.scopes, resolved, path)!
+      const target = toDeclaredTarget(catalog.scopes, resolved, path)
+      if (!target) {
+        // Reports why the scope is not accepted.
+        assertDeclaredScope(catalog.scopes, resolved)
+      }
+      return target!
     }
 
-    /** URL of a variant below the application base URL, built from the variant at hand rather than looked up again. */
-    function formatVariantUrl(
+    /**
+     * URL of a variant below the application base URL, for a target with an encoded path.
+     *
+     * `resolveTarget()` has checked the target and the catalog its variants, so the URL is joined without checks.
+     */
+    function joinVariantUrl(
       { label, hash, recipe }: RenditionVariant,
-      { scope, path }: RenditionTarget<Scope>,
+      scope: Scope | undefined,
+      encodedPath: string,
     ) {
       return (
         base +
-        formatRenditionPath(catalog.basePath, { scope, label, hash, format: recipe.format, path })
+        joinRenditionPath(
+          catalog.basePath,
+          { scope, label, hash, format: recipe.format },
+          encodedPath,
+        )
       )
+    }
+
+    /** URLs of variants of a target, which encode its path once for all of them. */
+    function formatVariantUrls(
+      variants: readonly RenditionVariant[],
+      { scope, path }: RenditionTarget<Scope>,
+    ) {
+      const encodedPath = encodePath(path)
+      return variants.map(variant => joinVariantUrl(variant, scope, encodedPath))
     }
 
     /** `srcset` value of variants and their URLs. */
@@ -147,7 +169,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       const variant = catalog.variant(preset, density, path)
       return catalog.isOriginal(preset, path)
         ? originalUrl!(target)
-        : formatVariantUrl(variant, target)
+        : joinVariantUrl(variant, target.scope, encodePath(path))
     }
 
     /**
@@ -167,10 +189,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
         return undefined
       }
       const variants = catalog.variants(preset, path)
-      return formatSrcset(
-        variants,
-        variants.map(variant => formatVariantUrl(variant, target)),
-      )
+      return formatSrcset(variants, formatVariantUrls(variants, target))
     }
 
     /**
@@ -203,7 +222,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       // `src` and the size come from density 1, which every preset has.
       const main = variants.findIndex(({ density }) => density === 1)
       const { recipe } = variants[main]!
-      const urls = variants.map(variant => formatVariantUrl(variant, target))
+      const urls = formatVariantUrls(variants, target)
       // Without enlargement a small source keeps its own size under `cover` and `fill`, while `contain` always pads the box.
       const boxed =
         recipe.fit === "contain" ||

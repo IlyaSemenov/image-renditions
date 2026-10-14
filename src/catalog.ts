@@ -1,5 +1,5 @@
 import { hashRecipe } from "./hash"
-import { isSafeScope } from "./path"
+import { encodePath, isSafeScope } from "./path"
 import {
   normalizeRecipe,
   type Recipe,
@@ -9,7 +9,13 @@ import {
   type SourcePolicy,
 } from "./recipe"
 import { assertDeclaredScope } from "./scopes"
-import { assertBasePath, DEFAULT_BASE_PATH, formatRenditionPath } from "./url"
+import {
+  assertBasePath,
+  assertSafeTarget,
+  DEFAULT_BASE_PATH,
+  isSafeLabel,
+  joinRenditionPath,
+} from "./url"
 
 /** Named transformation in a catalog. */
 export interface PresetDefinition extends RenditionOptions {
@@ -221,13 +227,12 @@ export function defineCatalog<const Name extends string, const Scope extends str
               animation,
             }),
           )
-          return Object.freeze({
-            preset,
-            density,
-            label: density === 1 ? preset : `${preset}@${density}x`,
-            recipe,
-            hash: hashRecipe(recipe),
-          })
+          const label = density === 1 ? preset : `${preset}@${density}x`
+          // URLs are joined from labels without checking them, so a label too long or with a density in exponent notation fails here.
+          if (!isSafeLabel(label)) {
+            throw new RangeError(`Invalid variant label "${label}" of preset "${preset}".`)
+          }
+          return Object.freeze({ preset, density, label, recipe, hash: hashRecipe(recipe) })
         }),
       )
     const variants = createVariants(options, "first-frame")
@@ -284,12 +289,24 @@ export function defineCatalog<const Name extends string, const Scope extends str
     return found
   }
 
-  function formatVariantUrl(
-    { label, hash, recipe }: RenditionVariant,
-    { scope, path }: RenditionTarget,
-  ) {
+  /** Checks a target and encodes its path, once for all the variant URLs of a call. */
+  function encodeTarget({ scope, path }: RenditionTarget) {
     assertDeclaredScope(scopes, scope)
-    return formatRenditionPath(basePath, { scope, label, hash, format: recipe.format, path })
+    assertSafeTarget(scope, path)
+    return encodePath(path)
+  }
+
+  /**
+   * URL of a variant for a target that `encodeTarget()` has checked and encoded.
+   *
+   * The base path and the labels are checked when the catalog is defined, and hashes are always safe.
+   */
+  function joinVariantUrl(
+    { label, hash, recipe }: RenditionVariant,
+    scope: string | undefined,
+    encodedPath: string,
+  ) {
+    return joinRenditionPath(basePath, { scope, label, hash, format: recipe.format }, encodedPath)
   }
 
   return Object.freeze<Catalog<Name, Scope>>({
@@ -303,11 +320,14 @@ export function defineCatalog<const Name extends string, const Scope extends str
     allVariants: Object.freeze([...variantsByHash.values()]),
     findVariant: hash => variantsByHash.get(hash),
     url: (preset, target, density) =>
-      formatVariantUrl(variant(preset, density, target.path), target),
-    srcset: (preset, target) =>
-      variants(preset, target.path)
-        .map(variant => `${formatVariantUrl(variant, target)} ${variant.density}x`)
-        .join(", "),
+      joinVariantUrl(variant(preset, density, target.path), target.scope, encodeTarget(target)),
+    srcset: (preset, target) => {
+      const found = variants(preset, target.path)
+      const encodedPath = encodeTarget(target)
+      return found
+        .map(entry => `${joinVariantUrl(entry, target.scope, encodedPath)} ${entry.density}x`)
+        .join(", ")
+    },
   })
 }
 

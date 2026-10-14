@@ -378,6 +378,13 @@ describe("validation", () => {
       expect(() => defineCatalog({ presets: { preset } })).toThrow(RangeError)
     }
     expect(() => defineCatalog({ presets: { "a.b": { width: 64 } } })).toThrow(RangeError)
+    // Variant labels are checked too: one too long, and one with a density in exponent notation.
+    expect(() =>
+      defineCatalog({ presets: { ["a".repeat(64)]: { width: 64, densities: [1, 2] } } }),
+    ).toThrow(RangeError)
+    expect(() => defineCatalog({ presets: { a: { densities: [1, 1e21] } } })).toThrow(
+      'Invalid variant label "a@1e+21x" of preset "a".',
+    )
     expect(() => defineCatalog({ basePath: "/img/", presets: {} })).toThrow(RangeError)
     for (const scopes of [[], ["a", "a"], ["a/b"]]) {
       expect(() => defineCatalog({ scopes, presets: {} })).toThrow(RangeError)
