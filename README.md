@@ -158,7 +158,7 @@ const renditions = useRenditions()
 renditions.url("cover", post.coverPath)
 renditions.url("avatar", path, { density: 2 })
 renditions.srcset("avatar", path)
-renditions.attrs("avatar", path) // attributes <RenditionImg> renders, for your own img element
+renditions.attrs("avatar", path) // src, srcset and size of <RenditionImg>, for your own img element
 ```
 
 `url()` and `srcset()` return `undefined` for an unsafe path.
@@ -169,6 +169,8 @@ Module options, under `renditions`:
 - `handler` — optional module exporting the h3 handler by default, mounted at the catalog base path.
 - `defaultScope` — optional [scope](#scopes) for `<RenditionImg>` and `useRenditions()`.
 - `originalUrl` — module building URLs of [originals](#originals); required when a preset lists `originals`.
+- `imgAttrs` — attributes every `<RenditionImg>` renders, such as `{ loading: "lazy", decoding: "async" }`.
+  An attribute of the element overrides them, for example `loading="eager"` on an image above the fold.
 
 > For users coming from `@nuxt/image`: this module is not an `@nuxt/image` provider, so instead of `<NuxtImg>` and `useImage()`, use `<RenditionImg>` and `useRenditions()` with catalog presets.
 

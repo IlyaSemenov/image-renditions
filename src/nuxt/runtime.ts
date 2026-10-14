@@ -5,6 +5,8 @@ import type { Catalog, RenditionTarget } from "../catalog"
 import { isSafePath, isSafeScope } from "../path"
 import { assertDeclaredScope, isDeclaredScope, toDeclaredTarget } from "../scopes"
 
+import { findRenditionAttr } from "./img-attrs"
+
 /** Attributes of an `img` element showing a rendition. */
 export interface RenditionImgAttrs {
   /** Absent for an unsafe path. */
@@ -12,6 +14,18 @@ export interface RenditionImgAttrs {
   srcset?: string
   width?: number
   height?: number
+}
+
+/**
+ * Attributes every `<RenditionImg>` renders, such as `{ loading: "lazy", decoding: "async" }`.
+ *
+ * Attributes of an element override them; `src`, `srcset`, `width` and `height` belong to the rendition alone.
+ */
+export type DefaultImgAttrs = Record<string, string | number | boolean> & {
+  src?: never
+  srcset?: never
+  width?: never
+  height?: never
 }
 
 /** Options of a rendition URL. */
@@ -32,6 +46,7 @@ export interface RenditionHelpersOptions<Scope extends string = string> {
    * The function receives a safe logical path, which it must encode.
    */
   useOriginalUrl?: () => (target: RenditionTarget<Scope>) => string
+  imgAttrs?: DefaultImgAttrs
 }
 
 /**
@@ -40,12 +55,12 @@ export interface RenditionHelpersOptions<Scope extends string = string> {
  * The Nuxt module calls it in a generated module; applications use the generated helpers.
  *
  * @throws {Error} When a preset lists `originals` and `useOriginalUrl` is missing.
- * @throws {RangeError} When `defaultScope` is not one of the scopes the catalog declares.
+ * @throws {RangeError} When `defaultScope` is not one of the scopes the catalog declares, or `imgAttrs` sets a rendition attribute.
  */
 export function createRenditionHelpers<Name extends string, Scope extends string = string>(
   catalog: Catalog<Name, Scope>,
   // The scopes are inferred from the catalog alone, so a default scope it does not declare fails to compile.
-  { defaultScope, useOriginalUrl }: RenditionHelpersOptions<NoInfer<Scope>> = {},
+  { defaultScope, useOriginalUrl, imgAttrs }: RenditionHelpersOptions<NoInfer<Scope>> = {},
 ) {
   if (!useOriginalUrl && catalog.presets.some(preset => catalog.originals(preset).length > 0)) {
     throw new Error(
@@ -54,6 +69,10 @@ export function createRenditionHelpers<Name extends string, Scope extends string
   }
   if (defaultScope !== undefined && !isDeclaredScope(catalog.scopes, defaultScope)) {
     throw new RangeError(`Undeclared default rendition scope "${defaultScope}".`)
+  }
+  const renditionAttr = findRenditionAttr(imgAttrs)
+  if (renditionAttr) {
+    throw new RangeError(`Default image attribute "${renditionAttr}" is set by the rendition.`)
   }
 
   /** Builds rendition URLs below the application base URL. */
@@ -190,7 +209,13 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     },
     setup(props) {
       const renditions = useRenditions()
-      return () => h("img", renditions.attrs(props.preset, props.src, { scope: props.scope }))
+      return () => {
+        return h("img", {
+          // Defaults set no rendition attribute, as checked above, so they never add a source or a size the rendition lacks.
+          ...imgAttrs,
+          ...renditions.attrs(props.preset, props.src, { scope: props.scope }),
+        })
+      }
     },
   })
 

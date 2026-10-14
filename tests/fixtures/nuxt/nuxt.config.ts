@@ -5,6 +5,7 @@ export default defineNuxtConfig({
     // Outside `server/`, so only the module can mount it.
     handler: "~~/renditions/handler",
     originalUrl: "~/original-url",
+    imgAttrs: { loading: "lazy" },
   },
   runtimeConfig: { public: { originalsUrl: "/originals" } },
   devtools: { enabled: false },

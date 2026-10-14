@@ -218,3 +218,50 @@ describe("scopes", () => {
     expect(built).toBe(0)
   })
 })
+
+describe("default attributes", () => {
+  const imgCatalog = defineCatalog({
+    presets: {
+      thumb: { width: 48, height: 48, densities: [1, 2] },
+      logo: { height: 32, originals: ["svg"] },
+    },
+  })
+  const useOriginalUrl =
+    () =>
+    ({ path }: { path: string }) =>
+      `https://uploads/${path}`
+
+  function renderImg(
+    RenditionImg: ReturnType<typeof createRenditionHelpers<"thumb" | "logo">>["RenditionImg"],
+    props: { preset: "thumb" | "logo"; src: string; loading?: string },
+  ) {
+    return renderToString(createSSRApp({ render: () => h(RenditionImg, props) }))
+  }
+
+  test("renders them unless the element overrides them", async () => {
+    const { RenditionImg } = createRenditionHelpers(imgCatalog, {
+      useOriginalUrl,
+      imgAttrs: { loading: "lazy", decoding: "async" },
+    })
+    const src = `/base${imgCatalog.url("thumb", { path: "a.jpg" })}`
+
+    expect(await renderImg(RenditionImg, { preset: "thumb", src: "a.jpg" })).toStartWith(
+      `<img loading="lazy" decoding="async" src="${src}"`,
+    )
+    expect(
+      await renderImg(RenditionImg, { preset: "thumb", src: "a.jpg", loading: "eager" }),
+    ).toStartWith(`<img loading="eager" decoding="async" src="${src}"`)
+  })
+
+  test("cannot set a rendition attribute in any letter case", () => {
+    expect(() =>
+      // @ts-expect-error The rendition alone sets its source and size.
+      createRenditionHelpers(imgCatalog, { useOriginalUrl, imgAttrs: { srcset: "x.png 2x" } }),
+    ).toThrow(RangeError)
+    for (const name of ["srcSet", "WIDTH", "Height", "SRC"]) {
+      expect(() =>
+        createRenditionHelpers(imgCatalog, { useOriginalUrl, imgAttrs: { [name]: "1" } }),
+      ).toThrow(RangeError)
+    }
+  })
+})

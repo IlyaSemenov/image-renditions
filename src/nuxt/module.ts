@@ -13,6 +13,9 @@ import type { Catalog } from "../catalog"
 import { isSafeScope } from "../path"
 import { isDeclaredScope } from "../scopes"
 
+import { findRenditionAttr } from "./img-attrs"
+import type { DefaultImgAttrs } from "./runtime"
+
 /** Options of the `image-renditions/nuxt` module, under the `renditions` key of the Nuxt config. */
 export interface ModuleOptions {
   /**
@@ -32,6 +35,8 @@ export interface ModuleOptions {
    * The function receives the scope, after `defaultScope`, and a safe logical path, which it must encode.
    */
   originalUrl?: string
+  /** Attributes every `<RenditionImg>` renders, such as `{ loading: "lazy", decoding: "async" }`; attributes of an element override them. */
+  imgAttrs?: DefaultImgAttrs
 }
 
 /**
@@ -44,7 +49,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     configKey: "renditions",
   },
 
-  async setup({ catalog: catalogModule, handler, defaultScope, originalUrl }, nuxt) {
+  async setup({ catalog: catalogModule, handler, defaultScope, originalUrl, imgAttrs }, nuxt) {
     if (!catalogModule) {
       throw new Error(
         "[image-renditions] Set `renditions.catalog` to the module exporting the catalog.",
@@ -52,6 +57,12 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     }
     if (defaultScope !== undefined && !isSafeScope(defaultScope)) {
       throw new Error(`[image-renditions] Invalid default scope "${defaultScope}".`)
+    }
+    const renditionAttr = findRenditionAttr(imgAttrs)
+    if (renditionAttr) {
+      throw new Error(
+        `[image-renditions] \`imgAttrs\` cannot set \`${renditionAttr}\`, which the rendition sets.`,
+      )
     }
     const catalogPath = await resolvePath(catalogModule)
     // The catalog is loaded at build time to mount the handler at its base path, which also validates it before the app runs.
@@ -89,6 +100,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
           `export const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, {`,
           `  defaultScope: ${JSON.stringify(defaultScope)},`,
           `  useOriginalUrl: ${originalUrlPath ? "useOriginalUrl" : "undefined"},`,
+          `  imgAttrs: ${JSON.stringify(imgAttrs)},`,
           `})`,
           "",
         ].join("\n"),
