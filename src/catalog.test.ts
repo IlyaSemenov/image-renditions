@@ -247,6 +247,97 @@ describe("originals", () => {
   })
 })
 
+describe("animation", () => {
+  const catalog = defineCatalog({
+    presets: {
+      clip: {
+        width: 64,
+        height: 64,
+        densities: [1, 2],
+        quality: 40,
+        effort: 8,
+        animation: "preserve",
+      },
+      sticker: { width: 64, format: "webp", quality: 60, effort: 6, animation: "preserve" },
+    },
+  })
+
+  it("gives GIF and WebP sources variants that keep the animation", () => {
+    const animated = catalog.variants("clip", "uploads/1/a.GIF")
+
+    expect(
+      animated.map(({ density, recipe }) => [density, recipe.width, recipe.animation]),
+    ).toEqual([
+      [1, 64, "preserve"],
+      [2, 128, "preserve"],
+    ])
+    expect(animated.every(({ recipe }) => recipe.format === "webp")).toBe(true)
+    expect(catalog.variant("clip", 2, "a.webp")).toBe(animated[1]!)
+    for (const path of ["uploads/1/a.jpg", "a.gif/b.jpg", undefined]) {
+      expect(catalog.variants("clip", path)[0]!.recipe).toMatchObject({
+        animation: "first-frame",
+        format: "avif",
+      })
+    }
+  })
+
+  it("builds urls of the animated variants and finds them by hash", () => {
+    const target = { path: "uploads/1/a.gif" }
+    const [single, double] = catalog.variants("clip", target.path)
+
+    expect(parseRenditionPath(catalog.basePath, catalog.url("clip", target, 2))).toMatchObject({
+      label: "clip@2x",
+      hash: double!.hash,
+      format: "webp",
+    })
+    expect(catalog.srcset("clip", target)).toBe(
+      `${catalog.url("clip", target)} 1x, ${catalog.url("clip", target, 2)} 2x`,
+    )
+    expect(catalog.findVariant(single!.hash)).toBe(single)
+  })
+
+  it("lists every variant once, animated ones included", () => {
+    const twin = defineCatalog({
+      presets: {
+        clip: { width: 64, animation: "preserve" },
+        copy: { width: 64, animation: "preserve" },
+      },
+    })
+
+    expect(catalog.allVariants).toHaveLength(6)
+    expect(catalog.allVariants).toEqual(
+      expect.arrayContaining([...catalog.variants("clip"), ...catalog.variants("clip", "a.gif")]),
+    )
+    expect(twin.allVariants.map(variant => variant.hash)).toEqual([
+      twin.variant("clip").hash,
+      twin.variant("clip", 1, "a.gif").hash,
+    ])
+  })
+
+  it("keeps the hashes of other sources", () => {
+    const before = defineCatalog({ presets: { clip: { width: 64, height: 64 } } })
+    const after = defineCatalog({
+      presets: { clip: { width: 64, height: 64, animation: "preserve" } },
+    })
+
+    expect(after.variant("clip").hash).toBe(before.variant("clip").hash)
+  })
+
+  it("takes quality and effort only from a WebP preset", () => {
+    expect(catalog.variant("clip", 1, "a.gif").recipe).toMatchObject({ quality: 80, effort: 4 })
+    expect(catalog.variant("sticker", 1, "a.gif").recipe).toMatchObject({ quality: 60, effort: 6 })
+  })
+
+  it("leaves originals to show sources as they are", () => {
+    const shown = defineCatalog({
+      presets: { clip: { width: 64, animation: "preserve", originals: ["gif"] } },
+    })
+
+    expect(shown.isOriginal("clip", "a.gif")).toBe(true)
+    expect(shown.variant("clip", 1, "a.webp").recipe.animation).toBe("preserve")
+  })
+})
+
 describe("validation", () => {
   it("rejects invalid presets at definition time", () => {
     const invalid = [
@@ -262,6 +353,7 @@ describe("validation", () => {
       { width: 64, originals: [".svg"] },
       { width: 64, originals: ["SVG"] },
       { width: 64, originals: [""] },
+      { width: 64, animation: "loop" as never },
     ]
     for (const preset of invalid) {
       expect(() => defineCatalog({ presets: { preset } })).toThrow(RangeError)

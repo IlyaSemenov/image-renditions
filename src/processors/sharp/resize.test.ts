@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 
 import { normalizeRecipe, type RenditionOptions } from "../../recipe"
 
-import { planResize } from "./resize"
+import { estimateRenditionArea, planResize } from "./resize"
 
 function plan(options: RenditionOptions, width: number, height: number) {
   return planResize(normalizeRecipe({ options, pipeline: 1 }), width, height)
@@ -40,4 +40,20 @@ test("keeps the full cut under cover when evening it out would let the long side
     width: 2,
     height: 2,
   })
+})
+
+test("bounds the rendition area by the box of fits that keep each side within it", () => {
+  const area = (options: RenditionOptions, width: number, height: number) =>
+    estimateRenditionArea(normalizeRecipe({ options, pipeline: 1 }), width, height)
+  const box = { width: 800, height: 800 }
+
+  // Sharp renders 100×800 under cover and fill, 40×800 under inside and 100×2000 under outside.
+  expect(area({ ...box, fit: "cover" }, 100, 2000)).toBe(80_000)
+  expect(area({ ...box, fit: "fill" }, 100, 2000)).toBe(80_000)
+  expect(area({ ...box, fit: "inside" }, 100, 2000)).toBe(32_000)
+  expect(area({ ...box, fit: "outside" }, 100, 2000)).toBe(200_000)
+  expect(area({ ...box, fit: "contain" }, 10, 10)).toBe(640_000)
+  expect(area({ ...box, enlarge: true }, 10, 20)).toBe(640_000)
+  // A side scaled to 2.67 pixels is rendered as 3.
+  expect(area({ width: 4, enlarge: true }, 3, 2)).toBe(12)
 })

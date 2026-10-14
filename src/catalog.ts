@@ -1,6 +1,12 @@
 import { hashRecipe } from "./hash"
 import { isSafeScope } from "./path"
-import { normalizeRecipe, type Recipe, type RenditionOptions, type SourcePolicy } from "./recipe"
+import {
+  normalizeRecipe,
+  type Recipe,
+  type RenditionAnimation,
+  type RenditionOptions,
+  type SourcePolicy,
+} from "./recipe"
 import { assertDeclaredScope } from "./scopes"
 import { assertBasePath, DEFAULT_BASE_PATH, formatRenditionPath } from "./url"
 
@@ -11,10 +17,21 @@ export interface PresetDefinition extends RenditionOptions {
   /**
    * Extensions of source files shown as they are instead of rendered, such as `svg`, in lowercase and without the dot.
    *
+   * Such sources are shown as they are whatever the other options, including `animation`.
    * They do not affect hashes, and the server still renders such a source when its rendition URL is requested.
    */
   originals?: readonly string[]
+  /**
+   * How renditions show animated sources; `first-frame` by default.
+   *
+   * With `preserve`, sources with the `gif` or `webp` extension get variants of their own in `webp` that keep the animation, which take `quality` and `effort` only from a `webp` preset.
+   * The variants of other sources keep their hashes.
+   */
+  animation?: RenditionAnimation
 }
+
+/** Extensions of sources that get animated variants, as a path does not tell an animated source from a still one. */
+const ANIMATED_EXTENSIONS: readonly string[] = ["gif", "webp"]
 
 /** Shared configuration of renditions, imported by both the client and the server. */
 export interface CatalogDefinition<Name extends string = string, Scope extends string = string> {
@@ -35,7 +52,11 @@ export interface CatalogDefinition<Name extends string = string, Scope extends s
   presets: Record<Name, PresetDefinition>
 }
 
-/** One density of a preset, which is a separate recipe with its own hash. */
+/**
+ * One density of a preset, which is a separate recipe with its own hash.
+ *
+ * A preset that preserves animation has a second variant at each density for GIF and WebP sources.
+ */
 export interface RenditionVariant {
   readonly preset: string
   readonly density: number
@@ -69,14 +90,18 @@ export interface Catalog<Name extends string = string, Scope extends string = st
   readonly presets: readonly Name[]
   /** Scopes every target has one of, if the catalog declares them. */
   readonly scopes?: readonly Scope[]
-  /** Variants of a preset ordered by density. */
-  variants(preset: Name): readonly RenditionVariant[]
   /**
-   * Variant of a preset at a density, `1` by default.
+   * Variants of a preset ordered by density.
+   *
+   * With the path of a GIF or WebP source of a preset that preserves animation, they are the variants that keep it.
+   */
+  variants(preset: Name, path?: string): readonly RenditionVariant[]
+  /**
+   * Variant of a preset at a density, `1` by default, chosen by the source path like in `variants()`.
    *
    * @throws {RangeError} When the preset does not declare the density.
    */
-  variant(preset: Name, density?: number): RenditionVariant
+  variant(preset: Name, density?: number, path?: string): RenditionVariant
   /**
    * Extensions of source files a preset shows as they are instead of rendered.
    *
@@ -89,6 +114,8 @@ export interface Catalog<Name extends string = string, Scope extends string = st
    * @throws {RangeError} When the preset is unknown.
    */
   isOriginal(preset: Name, path: string): boolean
+  /** Every variant of every preset, one per hash. */
+  readonly allVariants: readonly RenditionVariant[]
   /** Variant with a recipe hash, if the catalog has one. */
   findVariant(hash: string): RenditionVariant | undefined
   /**
@@ -147,7 +174,11 @@ export function defineCatalog<const Name extends string, const Scope extends str
   // The catalog and its variants are frozen, so a recipe keeps matching the hash computed for it here.
   const presetsByName = new Map<
     Name,
-    { variants: readonly RenditionVariant[]; originals: readonly string[] }
+    {
+      variants: readonly RenditionVariant[]
+      originals: readonly string[]
+      animatedVariants?: readonly RenditionVariant[]
+    }
   >()
   const variantsByHash = new Map<string, RenditionVariant>()
   for (const preset of presets) {
@@ -157,6 +188,7 @@ export function defineCatalog<const Name extends string, const Scope extends str
     const {
       densities = [1],
       originals = [],
+      animation = "first-frame",
       ...options
     } = {
       ...definition.defaults,
@@ -170,12 +202,19 @@ export function defineCatalog<const Name extends string, const Scope extends str
         `Preset "${preset}" must list original extensions in lowercase and without the dot.`,
       )
     }
-    const variants = Object.freeze(
-      [...densities]
-        .sort((a, b) => a - b)
-        .map((density): RenditionVariant => {
+
+    const sortedDensities = [...densities].sort((a, b) => a - b)
+    const createVariants = (variantOptions: RenditionOptions, animation: RenditionAnimation) =>
+      Object.freeze(
+        sortedDensities.map((density): RenditionVariant => {
           const recipe = wrapRangeError(`preset "${preset}"`, () =>
-            normalizeRecipe({ options, density, pipeline, policy: definition.sources }),
+            normalizeRecipe({
+              options: variantOptions,
+              density,
+              pipeline,
+              policy: definition.sources,
+              animation,
+            }),
           )
           return Object.freeze({
             preset,
@@ -185,9 +224,25 @@ export function defineCatalog<const Name extends string, const Scope extends str
             hash: hashRecipe(recipe),
           })
         }),
-    )
-    presetsByName.set(preset, { variants, originals: Object.freeze([...originals]) })
-    for (const variant of variants) {
+      )
+    const variants = createVariants(options, "first-frame")
+    // Quality and effort of another format would not suit WebP, so WebP defaults replace them.
+    // The animation is passed on even when it is not `preserve`, so an invalid value fails here.
+    const animatedVariants =
+      animation === "first-frame"
+        ? undefined
+        : createVariants(
+            options.format === "webp"
+              ? options
+              : { ...options, format: "webp", quality: undefined, effort: undefined },
+            animation,
+          )
+    presetsByName.set(preset, {
+      variants,
+      originals: Object.freeze([...originals]),
+      animatedVariants,
+    })
+    for (const variant of [...variants, ...(animatedVariants ?? [])]) {
       // Presets with equal recipes share renditions, so either variant describes the hash correctly.
       if (!variantsByHash.has(variant.hash)) {
         variantsByHash.set(variant.hash, variant)
@@ -203,19 +258,15 @@ export function defineCatalog<const Name extends string, const Scope extends str
     return found
   }
 
-  function variants(preset: Name) {
-    return presetByName(preset).variants
+  function variants(preset: Name, path?: string) {
+    const { variants, animatedVariants } = presetByName(preset)
+    return animatedVariants && path !== undefined && hasExtension(path, ANIMATED_EXTENSIONS)
+      ? animatedVariants
+      : variants
   }
 
-  function isOriginal(preset: Name, path: string) {
-    const { originals } = presetByName(preset)
-    // The extension is taken from the last segment, so a dot in a folder name is not one.
-    const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase()
-    return extension !== undefined && originals.includes(extension)
-  }
-
-  function variant(preset: Name, density = 1) {
-    const found = variants(preset).find(variant => variant.density === density)
+  function variant(preset: Name, density = 1, path?: string) {
+    const found = variants(preset, path).find(variant => variant.density === density)
     if (!found) {
       throw new RangeError(`Preset "${preset}" has no density ${density}.`)
     }
@@ -234,14 +285,22 @@ export function defineCatalog<const Name extends string, const Scope extends str
     variants,
     variant,
     originals: preset => presetByName(preset).originals,
-    isOriginal,
+    isOriginal: (preset, path) => hasExtension(path, presetByName(preset).originals),
+    allVariants: Object.freeze([...variantsByHash.values()]),
     findVariant: hash => variantsByHash.get(hash),
-    url: (preset, target, density) => variantUrl(variant(preset, density), target),
+    url: (preset, target, density) => variantUrl(variant(preset, density, target.path), target),
     srcset: (preset, target) =>
-      variants(preset)
+      variants(preset, target.path)
         .map(variant => `${variantUrl(variant, target)} ${variant.density}x`)
         .join(", "),
   })
+}
+
+/** Whether the extension of a path is in a list of lowercase extensions. */
+function hasExtension(path: string, extensions: readonly string[]) {
+  // The extension is taken from the last segment, so a dot in a folder name is not one.
+  const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase()
+  return extension !== undefined && extensions.includes(extension)
 }
 
 function withoutUndefined<T extends object>(value: T): Partial<T> {

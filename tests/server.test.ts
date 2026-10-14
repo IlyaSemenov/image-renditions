@@ -295,6 +295,57 @@ describe("resolve", () => {
   })
 })
 
+describe("processor", () => {
+  test("checks every variant of the catalog at creation, animated ones included", () => {
+    const animated = defineCatalog({ presets: { clip: { width: 64, animation: "preserve" } } })
+    const checked: Recipe[] = []
+    async function process(source: Uint8Array) {
+      return { data: source, contentType: "image/webp" }
+    }
+
+    fakes.createServer({
+      catalog: animated,
+      processor: { process, assertRecipe: recipe => void checked.push(recipe) },
+    })
+
+    expect(checked).toEqual(animated.allVariants.map(variant => variant.recipe))
+    expect(checked.map(recipe => recipe.animation)).toEqual(["first-frame", "preserve"])
+    expect(() =>
+      fakes.createServer({
+        catalog: animated,
+        processor: {
+          process,
+          assertRecipe(recipe) {
+            if (recipe.animation === "preserve") {
+              throw new RangeError("No animations.")
+            }
+          },
+        },
+      }),
+    ).toThrow('The processor cannot render "clip": No animations.')
+  })
+
+  test("checks a recipe passed to ensure", async () => {
+    const server = fakes.createServer({
+      processor: {
+        async process(source) {
+          return { data: source, contentType: "image/avif" }
+        },
+        assertRecipe(recipe) {
+          if (recipe.width === 100) {
+            throw new RangeError("Too wide.")
+          }
+        },
+      },
+    })
+
+    await expect(server.ensure({ ...avatar, width: 100 }, target, tenant)).rejects.toThrow(
+      RangeError,
+    )
+    expect(fakes.storageCalls()).toBe(0)
+  })
+})
+
 describe("limits", () => {
   const paths = ["uploads/1/a.jpg", "uploads/1/b.jpg", "uploads/1/c.jpg"]
 

@@ -97,6 +97,7 @@ export interface RenditionServer<Context, Scope extends string = string> {
    *
    * Resolves only after the rendition is written or confirmed to exist.
    *
+   * @throws {RangeError} When the processor cannot render the recipe.
    * @throws {RenditionError} When the rendition cannot be published.
    */
   ensure: (recipe: Recipe, target: RenditionTarget<Scope>, context: Context) => Promise<Rendition>
@@ -130,7 +131,7 @@ const MAX_TIMEOUT = 2 ** 31 - 1
 /**
  * Creates a rendition server over source and result stores.
  *
- * @throws {RangeError} When a limit is not an integer in its range.
+ * @throws {RangeError} When a limit is not an integer in its range, or the processor cannot render a variant of the catalog.
  */
 export function createRenditionServer<Context, Scope extends string = string>(
   options: RenditionServerOptions<Context, Scope>,
@@ -152,6 +153,18 @@ export function createRenditionServer<Context, Scope extends string = string>(
   assertInteger("limits.storageTimeout", storageTimeout, 1, MAX_TIMEOUT)
   assertInteger("limits.indexTimeout", indexTimeout, 1, MAX_TIMEOUT)
   const limiter = createLimiter({ concurrency, queueSize, queueTimeout })
+  // A recipe the processor cannot render fails here rather than on every request for it.
+  for (const variant of catalog.allVariants) {
+    try {
+      processor.assertRecipe?.(variant.recipe)
+    } catch (error) {
+      throw error instanceof RangeError
+        ? new RangeError(`The processor cannot render "${variant.label}": ${error.message}`, {
+            cause: error,
+          })
+        : error
+    }
+  }
 
   async function resolve(target: RenditionTarget<Scope>, context: Context) {
     // Requests are checked by the handler, but `ensure()` may get a target from anywhere.
@@ -259,6 +272,8 @@ export function createRenditionServer<Context, Scope extends string = string>(
     async ensure(input, target, context) {
       // A frozen copy keeps the hash and the rendered recipe consistent if the caller or the processor mutates it.
       const recipe = Object.freeze({ ...input })
+      // Recipes of the catalog are checked at creation, but `ensure()` may get one from anywhere.
+      processor.assertRecipe?.(recipe)
       const hash = hashRecipe(recipe)
       const { sourceKey, rendition } = await locate(hash, recipe.format, target, context)
       if (await isIndexed(rendition.url)) {

@@ -97,6 +97,25 @@ export function resizeScale(
   return fit === "inside" || fit === "contain" ? Math.min(...scales) : Math.max(...scales)
 }
 
+/**
+ * Estimates an upper bound of the rendition area of a source of the given size, in pixels.
+ *
+ * `contain` pads the image to the box, `cover`, `fill` and `inside` keep each side within the box, and other recipes keep the scaled size of the source.
+ */
+export function estimateRenditionArea(recipe: Recipe, width: number, height: number) {
+  if (recipe.fit === "contain") {
+    return recipe.width! * recipe.height!
+  }
+  const scale = resizeScale(recipe, width, height) ?? 1
+  const factor = recipe.enlarge ? scale : Math.min(scale, 1)
+  // Scaled sides are rounded to whole pixels, so rounding them up keeps the bound.
+  const scaledWidth = Math.ceil(width * factor)
+  const scaledHeight = Math.ceil(height * factor)
+  return recipe.fit === undefined || recipe.fit === "outside"
+    ? scaledWidth * scaledHeight
+    : Math.min(scaledWidth, recipe.width!) * Math.min(scaledHeight, recipe.height!)
+}
+
 /** Converts a normalized `#rrggbbaa` color to the form sharp accepts. */
 export function parseColor(color: string) {
   const channel = (index: number) => Number.parseInt(color.slice(1 + index * 2, 3 + index * 2), 16)

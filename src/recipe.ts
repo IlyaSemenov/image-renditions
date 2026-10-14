@@ -24,12 +24,17 @@ export type RenditionPosition =
   | "entropy"
   | "attention"
 
+/**
+ * How a rendition shows an animated source.
+ *
+ * `first-frame` renders its first frame as a still image, and `preserve` keeps the animation.
+ */
+export type RenditionAnimation = "first-frame" | "preserve"
+
 /** How sources of a special kind are turned into a rendition. */
 export interface SourcePolicy {
   /** `rasterize` renders vector sources at the resolution the output needs. */
   svg: "rasterize"
-  /** `first-frame` renders animated sources as a still image of their first frame. */
-  animation: "first-frame"
   /** `auto` applies the EXIF orientation before resizing; metadata never reaches the output. */
   orientation: "auto"
 }
@@ -79,7 +84,7 @@ export interface Recipe {
   readonly quality?: number
   readonly effort?: number
   readonly svg: SourcePolicy["svg"]
-  readonly animation: SourcePolicy["animation"]
+  readonly animation: RenditionAnimation
   readonly orientation: SourcePolicy["orientation"]
 }
 
@@ -107,10 +112,10 @@ export const MAX_DIMENSION = 16383
 
 const defaultSourcePolicy: SourcePolicy = {
   svg: "rasterize",
-  animation: "first-frame",
   orientation: "auto",
 }
 
+const animations: readonly RenditionAnimation[] = ["first-frame", "preserve"]
 const formats: readonly RenditionFormat[] = ["avif", "webp", "jpeg", "png"]
 const fits: readonly RenditionFit[] = ["cover", "contain", "fill", "inside", "outside"]
 const positions: readonly RenditionPosition[] = [
@@ -145,6 +150,8 @@ export interface RecipeInput {
   /** Application-owned pipeline version. */
   pipeline: number
   policy?: Partial<SourcePolicy>
+  /** Defaults to `first-frame`. */
+  animation?: RenditionAnimation
 }
 
 /**
@@ -152,7 +159,13 @@ export interface RecipeInput {
  *
  * @throws {RangeError} When an option is out of range or inconsistent.
  */
-export function normalizeRecipe({ options, density = 1, pipeline, policy }: RecipeInput): Recipe {
+export function normalizeRecipe({
+  options,
+  density = 1,
+  pipeline,
+  policy,
+  animation = "first-frame",
+}: RecipeInput): Recipe {
   assertInteger("pipeline", pipeline, 0, Number.MAX_SAFE_INTEGER)
   if (!(Number.isFinite(density) && density > 0)) {
     throw new RangeError(`Invalid density ${density}.`)
@@ -160,6 +173,7 @@ export function normalizeRecipe({ options, density = 1, pipeline, policy }: Reci
   // Options are validated even where they cannot affect the output, so a typo never passes silently.
   const format = options.format ?? "avif"
   assertOneOf("format", format, formats)
+  assertOneOf("animation", animation, animations)
   if (options.fit !== undefined) {
     assertOneOf("fit", options.fit, fits)
   }
@@ -202,7 +216,7 @@ export function normalizeRecipe({ options, density = 1, pipeline, policy }: Reci
     quality: format === "png" ? undefined : (options.quality ?? defaultQuality[format]),
     effort: range ? (options.effort ?? range.default) : undefined,
     svg: policyValue("svg", policy, ["rasterize"]),
-    animation: policyValue("animation", policy, ["first-frame"]),
+    animation,
     orientation: policyValue("orientation", policy, ["auto"]),
   })
 }

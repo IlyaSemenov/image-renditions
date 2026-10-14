@@ -130,7 +130,8 @@ Options of a preset, or of `defaults`, which every preset overrides field by fie
 - `quality` — encoder quality from 1 to 100, by default 50 for `avif` and 80 for `webp` and `jpeg`; `png` is lossless.
 - `effort` — CPU effort of the `avif` (0–9) and `webp` (0–6) encoders, 4 by default; other formats ignore it.
 - `densities` — pixel densities to render, `[1]` by default.
-- `originals` — extensions of sources to show as they are instead of rendered; see [Originals](#originals).
+- `animation` — `first-frame` (default) renders the first frame of animated sources, and `preserve` keeps the animation of GIF and WebP sources; see [Animation](#animation).
+- `originals` — extensions of sources shown as they are, so no option above applies to them; see [Originals](#originals).
 
 Options of the catalog:
 
@@ -149,6 +150,7 @@ Renaming a preset keeps its stored renditions.
 - A `src` that is already a URL, such as `blob:` or `https:`, renders unchanged, for example a preview of a file being uploaded.
 - An unsafe path, such as one with a `..` segment, renders no `src` instead of breaking the page.
 - A source whose extension the preset lists in [`originals`](#originals) renders as it is.
+- A GIF or WebP source of a preset with [`animation: "preserve"`](#animation) renders its animated variants.
 
 `useRenditions()` builds the same URLs in code, prefixing rendition URLs with `app.baseURL`:
 
@@ -263,6 +265,7 @@ For such a path, `<RenditionImg>` and `useRenditions()` give the URL of the sour
 - `url()` returns it for every declared density, and `srcset()` returns `undefined`.
 - `<RenditionImg>` renders no `srcset`, `width` or `height`, so size such images with CSS.
 - `gif` in the list shows every GIF as it is, because a path does not tell an animated GIF from a still one.
+  Leave it out and set [`animation: "preserve"`](#animation) instead to shrink animated GIFs.
 - Only the extension is checked, not the content, and the server still renders the source when its rendition URL is requested.
 - Changing `originals` keeps the hashes of the preset.
 
@@ -300,6 +303,32 @@ export default defineNuxtConfig({
 > - Serve them from a separate domain rather than a subdomain of the app.
 > - Serve them with a `Content-Security-Policy: sandbox` response header.
 > - Store them with `Content-Disposition: attachment`, which S3 keeps with the object, so browsers download such a file instead of opening it.
+
+## Animation
+
+A rendition of an animated source shows its first frame.
+`animation: "preserve"` keeps the animation of GIF and WebP sources instead:
+
+```ts
+export default defineCatalog({
+  presets: {
+    thumb: { width: 96, height: 96 },
+    content: { width: 800, densities: [1, 2], animation: "preserve" },
+  },
+})
+```
+
+- A path with the `gif` or `webp` extension gets variants of its own, which `url()`, `srcset()` and `<RenditionImg>` choose by the extension, as a path does not tell an animated source from a still one.
+- These variants are WebP and take `quality` and `effort` only from a preset whose `format` is `webp`, since values for another format do not suit WebP.
+- A still GIF or WebP source renders as a still WebP image.
+- Only the extension is checked, and the server renders any source with these variants when their URL is requested.
+- The variants of other sources keep their hashes, so only GIF and WebP sources render again.
+- [`originals`](#originals) take precedence, so a preset that lists `gif` in them shows GIF sources as they are.
+
+To render the animated variants ahead of a request, pass the source path to `catalog.variants()`, as in [Rendering outside requests](#rendering-outside-requests).
+
+How much of an animation a rendition keeps depends on the processor; see [Processing](#processing) for `createSharpProcessor()`.
+`createRenditionServer()` fails when its processor cannot render a variant of the catalog.
 
 ## Storage
 
@@ -362,6 +391,17 @@ location /renditions/ {
 Sources over 100 megapixels fail as `source-too-large`; pass `maxInputPixels` to `createSharpProcessor()` to change the limit, or `0` to remove it.
 A source that a preset would scale beyond 16383 pixels on a side, such as a narrow strip enlarged to the preset width, is scaled less to stay within that limit, so its rendition is smaller than the preset sets.
 Under `cover`, such a source is cropped instead, and its rendition keeps the preset size.
+
+`createSharpProcessor()` keeps the [animation](#animation) of GIF and WebP sources.
+It does not crop animations by `entropy` or `attention`, so a server fails to start with a preset that combines them.
+It renders the first frame of other animated sources, such as APNG and animated AVIF, of an animation with an EXIF orientation, and of an animation beyond a limit:
+
+- `maxFrames` — most frames, 1000 by default.
+- `maxAnimationPixels` — most pixels of all frames, each counted at the larger of the source and the rendition size, 50 megapixels by default.
+
+`0` removes a limit.
+An animation at the pixel limit may take about 4 bytes of memory per pixel, and its encoder needs more, so plan memory for `limits.concurrency` such renditions at once.
+Changing the limits keeps stored renditions as they are; bump `pipelineVersion` to render them again.
 
 To process images with another library, implement the [`Processor`](#extending) interface and pass your implementation to `createRenditionServer()` as `processor`.
 
@@ -428,10 +468,13 @@ function logoUrl(path: string) {
 `server.ensure()` publishes one density of a preset without a request, for example right after an upload:
 
 ```ts
-for (const { recipe } of catalog.variants("avatar")) {
-  await server.ensure(recipe, { scope: "tenant", path: "avatars/42.jpg" }, { tenant: "acme" })
+const path = "avatars/42.jpg"
+for (const { recipe } of catalog.variants("avatar", path)) {
+  await server.ensure(recipe, { scope: "tenant", path }, { tenant: "acme" })
 }
 ```
+
+The path chooses the [animated](#animation) variants of sources that have them.
 
 It resolves to the key and public URL of the rendition after it is written or found in storage.
 
@@ -526,6 +569,7 @@ Implement an interface from `image-renditions/server` and pass your implementati
 
 - To use other storage, implement `SourceStore` or `ResultStore` and pass it as `source` or `results`.
 - To process images with another library, implement `Processor` and pass it as `processor`.
+  Implement its `assertRecipe()` to reject recipes it cannot render, such as animations, when the server is created.
 - To share the index of published renditions between replicas, for example in Redis, implement `ReadinessIndex` and pass it as `readiness.shared`.
   If a call fails or exceeds `indexTimeout`, the server reports the error to `onError` and checks storage instead, while [outdated URLs](#outdated-urls) fail as `unknown-recipe`.
 - To render each rendition once across replicas, implement `Coordinator` as a shared lock and pass it as `coordinator`.
@@ -540,6 +584,6 @@ The built-in stores and processor implement the same interfaces and serve as exa
 - A source must never change under its key: renditions of a replaced source keep showing the old image.
   Store new content under a new key.
 - Deleting a source leaves its renditions in storage under its result prefix, which `server.resolve()` returns.
-- A rendition of an animated source shows its first frame, a rendition of an SVG source is rasterized at the target size, and EXIF orientation is applied.
+- A rendition of an animated source shows its first frame unless the preset sets [`animation: "preserve"`](#animation), a rendition of an SVG source is rasterized at the target size, and EXIF orientation is applied.
   A preset shows such sources as they are when it lists their extensions in [`originals`](#originals).
 - Source paths are limited to 1024 characters.

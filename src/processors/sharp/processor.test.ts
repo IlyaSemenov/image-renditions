@@ -6,6 +6,7 @@ import { normalizeRecipe, type RenditionOptions } from "../../recipe"
 import { RenditionError } from "../../server/error"
 
 import { createSharpProcessor } from "./processor"
+import { planResize } from "./resize"
 
 const processor = createSharpProcessor()
 
@@ -115,6 +116,159 @@ describe("source policies", () => {
     expect(metadata).toMatchObject({ width: 20, height: 40 })
     expect(metadata.orientation).toBeUndefined()
     expect(metadata.exif).toBeUndefined()
+  })
+})
+
+describe("animation", () => {
+  const colors = [
+    { r: 255, g: 0, b: 0 },
+    { r: 0, g: 255, b: 0 },
+    { r: 0, g: 0, b: 255 },
+  ]
+
+  async function createAnimation(width: number, height: number) {
+    const frames = await Promise.all(colors.map(color => solid(width, height, color)))
+    return sharp(frames, { join: { animated: true } })
+      .gif({ delay: [100, 200, 300], loop: 2 })
+      .toBuffer()
+  }
+
+  function preserve(options: RenditionOptions) {
+    return normalizeRecipe({
+      options: { format: "webp", ...options },
+      pipeline: 1,
+      animation: "preserve",
+    })
+  }
+
+  /** Strongest channel at the center of every frame, such as `r` for a red one. */
+  async function readFrameColors(data: Uint8Array) {
+    const { data: pixels, info } = await sharp(data, { animated: true })
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const frameHeight = info.pageHeight ?? info.height
+    return Array.from({ length: info.height / frameHeight }, (_, frame) => {
+      const y = frame * frameHeight + Math.floor(frameHeight / 2)
+      const offset = (y * info.width + Math.floor(info.width / 2)) * info.channels
+      const [r = 0, g = 0, b = 0] = pixels.subarray(offset, offset + 3)
+      return r > g && r > b ? "r" : g > b ? "g" : "b"
+    })
+  }
+
+  test("keeps the frames, their delays and the loop count under cover and contain", async () => {
+    const source = await createAnimation(40, 20)
+
+    for (const fit of ["cover", "contain"] as const) {
+      const output = await processor.process(source, preserve({ width: 16, height: 16, fit }))
+
+      expect(output.contentType).toBe("image/webp")
+      expect(await sharp(output.data).metadata()).toMatchObject({
+        width: 16,
+        height: 16,
+        pages: 3,
+        delay: [100, 200, 300],
+        loop: 2,
+      })
+      expect(await readFrameColors(output.data)).toEqual(["r", "g", "b"])
+    }
+  })
+
+  test("cuts every frame before scaling an elongated source beyond the side limit", async () => {
+    const recipe = preserve({ width: 400, height: 100, enlarge: true })
+    expect(planResize(recipe, 2, 200).extract).toBeDefined()
+
+    const { data } = await processor.process(await createAnimation(2, 200), recipe)
+
+    expect(await sharp(data).metadata()).toMatchObject({ width: 400, height: 100, pages: 3 })
+    expect(await readFrameColors(data)).toEqual(["r", "g", "b"])
+  })
+
+  test("renders a single frame as a still image", async () => {
+    const source = await sharp(await solid(8, 8, colors[0]!))
+      .gif()
+      .toBuffer()
+
+    const { data } = await processor.process(source, preserve({}))
+
+    expect((await sharp(data).metadata()).pages ?? 1).toBe(1)
+  })
+
+  test("renders the first frame of an animation beyond a limit", async () => {
+    const source = await createAnimation(40, 20)
+    // Small frames padded to a large box count at the size of the rendition.
+    const small = await createAnimation(4, 4)
+
+    for (const [limited, input, options] of [
+      [createSharpProcessor({ maxFrames: 2 }), source, {}],
+      [createSharpProcessor({ maxAnimationPixels: 2000 }), source, {}],
+      [
+        createSharpProcessor({ maxAnimationPixels: 2000 }),
+        small,
+        { width: 40, height: 40, fit: "contain" },
+      ],
+    ] as const) {
+      const { data } = await limited.process(input, preserve(options))
+
+      expect(await readFrameColors(data)).toEqual(["r"])
+    }
+    const unlimited = createSharpProcessor({ maxAnimationPixels: 0, maxFrames: 0 })
+    expect(
+      await readFrameColors((await unlimited.process(source, preserve({}))).data),
+    ).toHaveLength(3)
+  })
+
+  test("renders the first frame of an animation with an EXIF orientation", async () => {
+    const oriented = await sharp(await createAnimation(40, 20), { animated: true })
+      .webp()
+      .withMetadata({ orientation: 6 })
+      .toBuffer()
+
+    const { data } = await processor.process(oriented, preserve({}))
+
+    expect(await sharp(data).metadata()).toMatchObject({ width: 20, height: 40 })
+    expect(await readFrameColors(data)).toEqual(["r"])
+  })
+
+  test("counts the rendition size of every frame against the budget, with sides rounded up", async () => {
+    // Frames of 3×2 scaled to a width of 4 become 4×3, so three of them take 36 pixels.
+    const source = await createAnimation(3, 2)
+    const recipe = preserve({ width: 4, enlarge: true })
+
+    for (const [maxAnimationPixels, frames] of [
+      [36, 3],
+      [35, 1],
+    ]) {
+      const { data } = await createSharpProcessor({ maxAnimationPixels }).process(source, recipe)
+
+      expect(await readFrameColors(data)).toHaveLength(frames!)
+    }
+  })
+
+  test("rejects animations it cannot encode or crop", async () => {
+    const recipes = [
+      normalizeRecipe({ options: {}, pipeline: 1, animation: "preserve" }),
+      preserve({ width: 16, height: 16, position: "attention" }),
+    ]
+
+    const source = await createAnimation(40, 20)
+
+    for (const recipe of recipes) {
+      expect(() => processor.assertRecipe!(recipe)).toThrow(RangeError)
+      await expect(processor.process(source, recipe)).rejects.toThrow(RangeError)
+    }
+    expect(() =>
+      processor.assertRecipe!(
+        normalizeRecipe({ options: { width: 16, height: 16, position: "attention" }, pipeline: 1 }),
+      ),
+    ).not.toThrow()
+  })
+
+  test("rejects limits that are not non-negative integers", () => {
+    for (const name of ["maxAnimationPixels", "maxFrames"] as const) {
+      for (const value of [-1, 1.5, Number.NaN]) {
+        expect(() => createSharpProcessor({ [name]: value })).toThrow(RangeError)
+      }
+    }
   })
 })
 

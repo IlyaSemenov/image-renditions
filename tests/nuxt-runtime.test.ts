@@ -13,6 +13,7 @@ const catalog = defineCatalog({
     badge: { width: 48, height: 48, fit: "contain" },
     thumb: { width: 48, height: 48 },
     content: { width: 1200 },
+    clip: { width: 48, height: 48, densities: [1, 2], enlarge: true, animation: "preserve" },
   },
 })
 const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, { defaultScope: "t" })
@@ -75,6 +76,17 @@ describe("RenditionImg", () => {
     expect(await render({ preset: "badge", src: "uploads/1/a.jpg" })).toContain(
       'width="48" height="48"',
     )
+  })
+
+  test("renders the animated variants of a GIF source of a preset that preserves animation", async () => {
+    const target = { scope: "t", path: "uploads/1/a.gif" }
+    const [single, double] = catalog.variants("clip", target.path)
+
+    expect(await render({ preset: "clip", src: target.path })).toBe(
+      `<img src="/base${catalog.url("clip", target)}" srcset="/base${catalog.url("clip", target)} 1x, /base${catalog.url("clip", target, 2)} 2x" width="48" height="48">`,
+    )
+    expect(catalog.url("clip", target)).toContain(`.${single!.hash}.webp/`)
+    expect(catalog.url("clip", target, 2)).toContain(`.${double!.hash}.webp/`)
   })
 
   test("omits the size of a preset whose output may keep the source size or aspect ratio", async () => {
