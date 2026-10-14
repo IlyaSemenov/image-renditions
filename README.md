@@ -23,7 +23,13 @@ Resize and re-encode uploaded images when a page first shows them, store each re
 
 With an S3 bucket, or a directory that outlives deploys and is shared by every replica, app servers keep no image files: renditions survive redeploys, and any replica serves any of them.
 
-The h3 handler supports h3 1.15 or newer and h3 2, and the Nuxt module requires Nuxt 4.
+The library is modular, with pluggable parts:
+
+- [HTTP](#h3-and-other-frameworks): an event handler for h3 1.15 or newer and h3 2, and a framework-neutral handler for other servers.
+- [Processing](#processing): a processor built on sharp.
+- [Storage](#storage): an S3 bucket or a file system directory, chosen separately for uploads and renditions.
+- [Nuxt](#quick-start): a Nuxt 4 module that registers the handler and the `<RenditionImg>` component.
+- [Extending](#extending): other storage, image libraries, and state shared between replicas plug in through the interfaces of `image-renditions/server`.
 
 ## When not to use it
 
