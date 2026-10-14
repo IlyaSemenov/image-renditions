@@ -23,6 +23,17 @@ await symlink(root, link)
 
 const build = spawnSync(process.execPath, ["run", "nuxt", "build", fixture], { stdio: "inherit" })
 assert.equal(build.status, 0, "nuxt build failed")
+// Preparing generates the types and the tsconfig of the app, which check the types the module generates and auto-imports.
+const prepare = spawnSync(process.execPath, ["run", "nuxt", "prepare", fixture], {
+  stdio: "inherit",
+})
+assert.equal(prepare.status, 0, "nuxt prepare failed")
+const typecheck = spawnSync(
+  process.execPath,
+  ["run", "tsc", "-p", join(fixture, ".nuxt/tsconfig.app.json"), "--noEmit"],
+  { stdio: "inherit" },
+)
+assert.equal(typecheck.status, 0, "the fixture app does not typecheck")
 
 const storage = await mkdtemp(join(tmpdir(), "image-renditions-nuxt-"))
 await mkdir(join(storage, "uploads"))
@@ -42,7 +53,7 @@ server.stderr.on("data", chunk => (output += chunk))
 
 try {
   await waitForServer()
-  const photo = { path: "photo.png" }
+  const photo = { scope: "public" as const, path: "photo.png" }
 
   // The page renders `<RenditionImg>` and a `useRenditions()` URL from the catalog.
   const html = await (await fetch(origin)).text()
@@ -63,7 +74,7 @@ try {
   const stored = await sharp(join(storage, "renditions/photo.png", `${hash}.avif`)).metadata()
   assert.deepEqual([stored.width, stored.height], [48, 48])
 
-  const missing = await fetch(origin + catalog.url("avatar", { path: "missing.png" }), {
+  const missing = await fetch(origin + catalog.url("avatar", { ...photo, path: "missing.png" }), {
     redirect: "manual",
   })
   assert.equal(missing.status, 404, output)

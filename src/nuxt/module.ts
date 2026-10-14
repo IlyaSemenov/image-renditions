@@ -4,6 +4,7 @@ import {
   addImports,
   addServerHandler,
   addTemplate,
+  addTypeTemplate,
   defineNuxtModule,
   resolvePath,
 } from "nuxt/kit"
@@ -106,6 +107,32 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
         ].join("\n"),
     })
     addImports({ name: "useRenditions", from: template.dst })
+    // The registry types helpers in files of the application, which the generated module imports and so cannot export to.
+    // The top-level export makes the file a module, so the declaration augments the runtime module instead of replacing it.
+    addTypeTemplate({
+      filename: "types/image-renditions.d.ts",
+      getContents: () =>
+        [
+          `declare module "image-renditions/nuxt/runtime" {`,
+          `  interface RenditionRegister {`,
+          `    catalog: typeof import(${formatImportSpecifier(catalogPath)}).default`,
+          `  }`,
+          `}`,
+          "",
+          "export {}",
+          "",
+        ].join("\n"),
+    })
+    // A module of its own re-exports the helper: the generated module imports `originalUrl`, which would import it back,
+    // and in a project that does not declare this package as a dependency, Nuxt types an import from the package
+    // by the path of its `.d.mts` types without the extension, which TypeScript does not find.
+    const defineTemplate = addTemplate({
+      filename: "image-renditions-define.ts",
+      write: true,
+      getContents: () =>
+        `export { defineRenditionOriginalUrl } from "image-renditions/nuxt/runtime"\n`,
+    })
+    addImports({ name: "defineRenditionOriginalUrl", from: defineTemplate.dst })
     addComponent({ name: "RenditionImg", export: "RenditionImg", filePath: template.dst })
   },
 })

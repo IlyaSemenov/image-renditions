@@ -1,6 +1,6 @@
-import { encodePath, type RenditionTarget } from "image-renditions"
+import { encodePath } from "image-renditions"
 
-export default function useOriginalUrl() {
+export default defineRenditionOriginalUrl(() => {
   const { originalsUrl } = useRuntimeConfig().public
-  return ({ path }: RenditionTarget) => `${originalsUrl}/${encodePath(path)}`
-}
+  return ({ path }) => `${originalsUrl}/${encodePath(path)}`
+})

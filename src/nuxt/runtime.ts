@@ -1,7 +1,7 @@
 import { useRuntimeConfig } from "nuxt/app"
 import { defineComponent, h, type PropType } from "vue"
 
-import type { Catalog, RenditionTarget, RenditionVariant } from "../catalog"
+import type { Catalog, RenditionTarget, RenditionVariant, ScopeName } from "../catalog"
 import { encodePath, isSafePath, isSafeScope } from "../path"
 import { assertDeclaredScope, isDeclaredScope, toDeclaredTarget } from "../scopes"
 import { joinRenditionPath } from "../url"
@@ -43,6 +43,32 @@ export interface RenditionAttrsOptions<Scope extends string = string> {
   scope?: Scope
   /** Whether to set `width` and `height`; `false` leaves the size to a component that sizes the image itself. */
   size?: boolean
+}
+
+/**
+ * Registry of the catalog the Nuxt module serves, which the module fills with the type of its catalog.
+ *
+ * It types helpers defined in files of the application, such as {@link defineRenditionOriginalUrl}.
+ */
+// oxlint-disable-next-line typescript/no-empty-object-type -- the Nuxt module augments it
+export interface RenditionRegister {}
+
+/** Scope of the catalog in {@link RenditionRegister}, or any string without one. */
+type RegisteredScope = RenditionRegister extends {
+  catalog: infer C extends Pick<Catalog, "scopes">
+}
+  ? ScopeName<C>
+  : string
+
+/**
+ * Defines the composable of the `originalUrl` module option, typing its targets by the catalog of the Nuxt module.
+ *
+ * The Nuxt module auto-imports it.
+ */
+export function defineRenditionOriginalUrl(
+  useOriginalUrl: () => (target: RenditionTarget<RegisteredScope>) => string,
+): () => (target: RenditionTarget<RegisteredScope>) => string {
+  return useOriginalUrl
 }
 
 /** Options of {@link createRenditionHelpers}. */

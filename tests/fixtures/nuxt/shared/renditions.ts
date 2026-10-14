@@ -2,6 +2,7 @@ import { defineCatalog } from "image-renditions"
 
 export default defineCatalog({
   basePath: "/images",
+  scopes: ["public", "tenant"],
   presets: {
     avatar: { width: 48, height: 48, enlarge: true, densities: [1, 2] },
     logo: { height: 32, originals: ["svg"] },

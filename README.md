@@ -278,16 +278,17 @@ For such a path, `<RenditionImg>` and `useRenditions()` give the URL of the sour
 - Changing `originals` keeps the hashes of the preset.
 
 Only the app knows where its sources are served from, so it builds their URLs.
-Set the module option `originalUrl` to a module whose default export is a composable returning a function from the scope and the logical path to the URL:
+Set the module option `originalUrl` to a module whose default export is a composable returning a function from the scope and the logical path to the URL.
+`defineRenditionOriginalUrl()`, which the module auto-imports, types them by the catalog:
 
 ```ts
 // app/renditions/original-url.ts
-import { encodePath, type RenditionTarget } from "image-renditions"
+import { encodePath } from "image-renditions"
 
-export default function useOriginalUrl() {
+export default defineRenditionOriginalUrl(() => {
   const { uploadsUrl } = useRuntimeConfig().public
-  return ({ path }: RenditionTarget) => `${uploadsUrl}/${encodePath(path)}`
-}
+  return ({ path }) => `${uploadsUrl}/${encodePath(path)}`
+})
 ```
 
 ```ts

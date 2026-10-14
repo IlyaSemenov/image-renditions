@@ -16,5 +16,6 @@ export default defineRenditionEventHandler({
     source: createFileSystemSource({ root: join(storage, "uploads") }),
     results: createFileSystemResults({ root: join(storage, "renditions"), publicUrl: "/stored" }),
     processor: createSharpProcessor(),
+    resolveSource: ({ scope, path }) => (scope === "public" ? { sourceKey: path } : undefined),
   }),
 })
