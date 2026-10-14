@@ -1,5 +1,11 @@
 # image-renditions
 
+## 0.4.0
+
+### Minor Changes
+
+- 2e071aa: `createRenditionServer()` takes `onDegradation`, which receives the shortfalls a processor reports for new renditions, such as the first frame the sharp processor renders for an animation beyond a limit.
+
 ## 0.3.0
 
 ### Minor Changes
