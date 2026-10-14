@@ -1,5 +1,6 @@
 import sharp from "sharp"
 
+import { assertInteger } from "../../assert"
 import { formatContentTypes, MAX_DIMENSION, type Recipe } from "../../recipe"
 import { RenditionError } from "../../server/error"
 import type { Processor } from "../../server/processor"
@@ -8,17 +9,22 @@ import { parseColor, planResize, resizeScale } from "./resize"
 
 /** Options of {@link createSharpProcessor}. */
 export interface SharpProcessorOptions {
-  /** Largest decoded source, in pixels; larger sources are unsupported. */
+  /** Largest decoded source, in pixels; larger sources are unsupported, and `0` removes the limit. */
   maxInputPixels?: number
 }
 
 /** Rasterization density SVG renders at when no scaling is needed, in DPI. */
 const SVG_BASE_DENSITY = 72
 
-/** Creates a processor backed by sharp and libvips. */
+/**
+ * Creates a processor backed by sharp and libvips.
+ *
+ * @throws {RangeError} When `maxInputPixels` is not a non-negative integer.
+ */
 export function createSharpProcessor({
   maxInputPixels = 100_000_000,
 }: SharpProcessorOptions = {}): Processor {
+  assertInteger("maxInputPixels", maxInputPixels, 0, Number.MAX_SAFE_INTEGER)
   return {
     async process(source, recipe) {
       // One pipeline avoids a separate buffer of decoded pixels, so its failures are not told apart and all count as source failures, as most of them are.

@@ -342,7 +342,7 @@ location /renditions/ {
 ## Processing
 
 `createSharpProcessor()` from `image-renditions/sharp` processes images with [sharp](https://sharp.pixelplumbing.com).
-Sources over 100 megapixels fail as unsupported; pass `maxInputPixels` to `createSharpProcessor()` to change the limit.
+Sources over 100 megapixels fail as unsupported; pass `maxInputPixels` to `createSharpProcessor()` to change the limit, or `0` to remove it.
 A source that a preset would scale beyond 16383 pixels on a side, such as a narrow strip enlarged to the preset width, is scaled less to stay within that limit, so its rendition is smaller than the preset sets.
 Under `cover`, such a source is cropped instead, and its rendition keeps the preset size.
 

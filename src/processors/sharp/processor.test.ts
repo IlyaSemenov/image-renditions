@@ -142,6 +142,25 @@ describe("failures", () => {
   })
 })
 
+describe("pixel limit", () => {
+  test("rejects a limit that is not a non-negative integer", () => {
+    for (const maxInputPixels of [-1, 1.5, Number.NaN]) {
+      expect(() => createSharpProcessor({ maxInputPixels })).toThrow(RangeError)
+    }
+  })
+
+  test("is removed by 0", async () => {
+    const unlimited = createSharpProcessor({ maxInputPixels: 0 })
+
+    const output = await unlimited.process(
+      await solid(10, 10, { r: 0, g: 0, b: 0 }),
+      normalizeRecipe({ options: { width: 5 }, pipeline: 1 }),
+    )
+
+    expect(output.contentType).toBe("image/avif")
+  })
+})
+
 describe("side limit", () => {
   const black = { r: 0, g: 0, b: 0 }
   // Enlarged to a width of 30, a strip 1000 times taller than wide would become 30000 pixels tall.
