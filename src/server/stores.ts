@@ -21,7 +21,7 @@ export interface SourceStore {
    * Reads a source object.
    *
    * Resolves to `undefined` when the object does not exist.
-   * Rejects with a `RenditionError` of reason `unsupported-source` when the object exceeds a size limit.
+   * Rejects with a `RenditionError` of reason `source-too-large` when the object exceeds a size limit.
    */
   read(key: string, options: StoreCallOptions): Promise<Uint8Array | undefined>
 }

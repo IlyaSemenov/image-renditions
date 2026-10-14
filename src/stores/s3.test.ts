@@ -61,7 +61,7 @@ describe("source", () => {
 
     const failure = await source.read("big.jpg", { signal }).catch((error: unknown) => error)
 
-    expect((failure as RenditionError).reason).toBe("unsupported-source")
+    expect((failure as RenditionError).reason).toBe("source-too-large")
     expect(transformToWebStream).not.toHaveBeenCalled()
     expect(abortSignal?.aborted).toBe(true)
   })
@@ -98,7 +98,7 @@ describe("source", () => {
 
       const failure = await source.read("big.jpg", { signal }).catch((error: unknown) => error)
 
-      expect((failure as RenditionError).reason).toBe("unsupported-source")
+      expect((failure as RenditionError).reason).toBe("source-too-large")
       expect(pulls).toBe(3)
       expect(cancelStream).toHaveBeenCalled()
       expect(abortSignal?.aborted).toBe(true)

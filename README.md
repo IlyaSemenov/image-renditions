@@ -289,7 +289,7 @@ export default defineNuxtConfig({
 ## Storage
 
 The server reads sources from a source store and writes renditions to a result store, which may be of different kinds.
-Both source stores fail sources larger than 50 MiB as unsupported; pass `maxBytes` to `createS3Source()` or `createFileSystemSource()` to change the limit.
+Both source stores fail sources larger than 50 MiB as `source-too-large`; pass `maxBytes` to `createS3Source()` or `createFileSystemSource()` to change the limit.
 
 ### S3 storage
 
@@ -342,7 +342,7 @@ location /renditions/ {
 ## Processing
 
 `createSharpProcessor()` from `image-renditions/sharp` processes images with [sharp](https://sharp.pixelplumbing.com).
-Sources over 100 megapixels fail as unsupported; pass `maxInputPixels` to `createSharpProcessor()` to change the limit, or `0` to remove it.
+Sources over 100 megapixels fail as `source-too-large`; pass `maxInputPixels` to `createSharpProcessor()` to change the limit, or `0` to remove it.
 A source that a preset would scale beyond 16383 pixels on a side, such as a narrow strip enlarged to the preset width, is scaled less to stay within that limit, so its rendition is smaller than the preset sets.
 Under `cover`, such a source is cropped instead, and its rendition keeps the preset size.
 
@@ -462,7 +462,8 @@ The handler responds to a failure with the status of its reason:
 - `invalid-request` (404): malformed URL, `resolveSource` rejected the target, or a key is unsafe or too long for the store
 - `unknown-recipe` (404): hash neither in the catalog nor known as published
 - `source-not-found` (404): no source under the resolved key
-- `unsupported-source` (422): source cannot be decoded or rendered, or exceeds a size limit
+- `unsupported-source` (422): source cannot be decoded or processed
+- `source-too-large` (422): source exceeds a byte or pixel limit
 - `source-error` (502): reading the source failed
 - `processing-failed` (500): processing failed for a reason other than the source
 - `storage-error` (502): checking for or writing the rendition failed

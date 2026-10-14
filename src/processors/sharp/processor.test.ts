@@ -127,8 +127,16 @@ describe("failures", () => {
     expect(failure).toBeInstanceOf(RenditionError)
     expect((failure as RenditionError).reason).toBe("unsupported-source")
   })
+})
 
-  test("reports sources above the pixel limit as unsupported", async () => {
+describe("pixel limit", () => {
+  test("rejects a limit that is not a non-negative integer", () => {
+    for (const maxInputPixels of [-1, 1.5, Number.NaN]) {
+      expect(() => createSharpProcessor({ maxInputPixels })).toThrow(RangeError)
+    }
+  })
+
+  test("fails sources above it as too large", async () => {
     const limited = createSharpProcessor({ maxInputPixels: 50 })
 
     const failure = await limited
@@ -138,15 +146,25 @@ describe("failures", () => {
       )
       .catch((error: unknown) => error)
 
-    expect((failure as RenditionError).reason).toBe("unsupported-source")
+    expect((failure as RenditionError).reason).toBe("source-too-large")
   })
-})
 
-describe("pixel limit", () => {
-  test("rejects a limit that is not a non-negative integer", () => {
-    for (const maxInputPixels of [-1, 1.5, Number.NaN]) {
-      expect(() => createSharpProcessor({ maxInputPixels })).toThrow(RangeError)
-    }
+  test("fails an SVG whose raster would be above it as too large", async () => {
+    const limited = createSharpProcessor({ maxInputPixels: 10_000 })
+    const svg = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+    )
+
+    const output = await limited.process(
+      svg,
+      normalizeRecipe({ options: { width: 64 }, pipeline: 1 }),
+    )
+    const failure = await limited
+      .process(svg, normalizeRecipe({ options: { width: 200 }, pipeline: 1 }))
+      .catch((error: unknown) => error)
+
+    expect(output.contentType).toBe("image/avif")
+    expect((failure as RenditionError).reason).toBe("source-too-large")
   })
 
   test("is removed by 0", async () => {

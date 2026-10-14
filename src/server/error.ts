@@ -5,8 +5,10 @@ export type RenditionFailureReason =
   /** The recipe hash is not in the catalog, and no rendition with it is known to be published. */
   | "unknown-recipe"
   | "source-not-found"
-  /** The source cannot be decoded or rendered, or exceeds a size limit. */
+  /** The source cannot be decoded or processed. */
   | "unsupported-source"
+  /** The source exceeds a byte or pixel limit. */
+  | "source-too-large"
   /** Reading the source failed for a reason other than its absence. */
   | "source-error"
   /** Processing failed for a reason other than the source. */

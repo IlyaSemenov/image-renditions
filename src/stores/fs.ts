@@ -10,7 +10,7 @@ import type { ResultStore, SourceStore } from "../server/stores"
 export interface FileSystemSourceOptions {
   /** Directory source keys are resolved in. */
   root: string
-  /** Largest source file, in bytes; larger sources are unsupported. */
+  /** Largest source file, in bytes; larger sources fail as too large. */
   maxBytes?: number
 }
 
@@ -39,10 +39,7 @@ export function createFileSystemSource({
         return undefined
       }
       if (stats.size > maxBytes) {
-        throw new RenditionError(
-          "unsupported-source",
-          `The source ${key} exceeds ${maxBytes} bytes.`,
-        )
+        throw new RenditionError("source-too-large", `The source ${key} exceeds ${maxBytes} bytes.`)
       }
       return new Uint8Array(await readFile(path, { signal }))
     },

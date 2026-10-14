@@ -9,7 +9,7 @@ import { parseColor, planResize, resizeScale } from "./resize"
 
 /** Options of {@link createSharpProcessor}. */
 export interface SharpProcessorOptions {
-  /** Largest decoded source, in pixels; larger sources are unsupported, and `0` removes the limit. */
+  /** Largest decoded source, in pixels; larger sources fail as too large, and `0` removes the limit. */
   maxInputPixels?: number
 }
 
@@ -28,10 +28,13 @@ export function createSharpProcessor({
   return {
     async process(source, recipe) {
       // One pipeline avoids a separate buffer of decoded pixels, so its failures are not told apart and all count as source failures, as most of them are.
+      // Failures detected before the pipeline, such as the pixel limit, keep their own reason.
       const data = await render(source, recipe, maxInputPixels).catch((error: unknown) => {
-        throw new RenditionError("unsupported-source", "The source cannot be processed.", {
-          cause: error,
-        })
+        throw error instanceof RenditionError
+          ? error
+          : new RenditionError("unsupported-source", "The source cannot be processed.", {
+              cause: error,
+            })
       })
       return { data: new Uint8Array(data), contentType: formatContentTypes[recipe.format] }
     },
@@ -40,7 +43,9 @@ export function createSharpProcessor({
 
 async function render(source: Uint8Array, recipe: Recipe, maxInputPixels: number) {
   const input = { failOn: "error", limitInputPixels: maxInputPixels } as const
-  const metadata = await sharp(source, input).metadata()
+  // Sharp would fail a source over the limit like an undecodable one, so the limit is checked here and the pipeline keeps it only as a safeguard.
+  const metadata = await sharp(source, { ...input, limitInputPixels: false }).metadata()
+  assertPixels(metadata.width, metadata.height, maxInputPixels)
   // Resizing applies to the image after EXIF orientation, which may swap its sides.
   let { width, height } = metadata.autoOrient
   let density: number | undefined
@@ -54,7 +59,9 @@ async function render(source: Uint8Array, recipe: Recipe, maxInputPixels: number
         : Math.min(needed, MAX_DIMENSION / Math.max(width, height, 1))
     density = Math.min(Math.max(SVG_BASE_DENSITY * scale, 1), 100_000)
     // The intrinsic size is rounded, so the size of the raster is read rather than computed.
-    const raster = (await sharp(source, { ...input, density }).metadata()).autoOrient
+    const raster = (await sharp(source, { ...input, density, limitInputPixels: false }).metadata())
+      .autoOrient
+    assertPixels(raster.width, raster.height, maxInputPixels)
     width = raster.width
     height = raster.height
   }
@@ -81,5 +88,15 @@ async function render(source: Uint8Array, recipe: Recipe, maxInputPixels: number
       return pipeline.jpeg({ quality: recipe.quality }).toBuffer()
     case "png":
       return pipeline.png().toBuffer()
+  }
+}
+
+/** Fails as `source-too-large` when an image of the size exceeds the pixel limit, unless the limit is `0`. */
+function assertPixels(width: number, height: number, maxInputPixels: number) {
+  if (maxInputPixels > 0 && width * height > maxInputPixels) {
+    throw new RenditionError(
+      "source-too-large",
+      `The source of ${width}×${height} pixels exceeds the limit of ${maxInputPixels}.`,
+    )
   }
 }

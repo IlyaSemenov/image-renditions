@@ -29,14 +29,14 @@ describe("source", () => {
     expect(await source.read("uploads/a.jpg/nested", { signal })).toBeUndefined()
   })
 
-  test("rejects files above the size limit as unsupported", async () => {
+  test("rejects files above the size limit as too large", async () => {
     await writeFile(join(root, "big.jpg"), new Uint8Array(10))
 
     const failure = await createFileSystemSource({ root, maxBytes: 5 })
       .read("big.jpg", { signal })
       .catch((error: unknown) => error)
 
-    expect((failure as RenditionError).reason).toBe("unsupported-source")
+    expect((failure as RenditionError).reason).toBe("source-too-large")
   })
 
   test("rejects keys escaping the root", async () => {

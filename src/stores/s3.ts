@@ -42,7 +42,7 @@ export interface S3ClientLike {
 export interface S3SourceOptions {
   client: S3ClientLike
   bucket: string
-  /** Largest source object, in bytes; larger sources are unsupported. */
+  /** Largest source object, in bytes; larger sources fail as too large. */
   maxBytes?: number
 }
 
@@ -79,7 +79,7 @@ export function createS3Source({
         return undefined
       }
       const tooLarge = new RenditionError(
-        "unsupported-source",
+        "source-too-large",
         `The source ${key} exceeds ${maxBytes} bytes.`,
       )
       if ((output.ContentLength ?? 0) > maxBytes) {

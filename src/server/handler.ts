@@ -59,6 +59,7 @@ const failureStatus: Record<RenditionFailureReason, number> = {
   "unknown-recipe": 404,
   "source-not-found": 404,
   "unsupported-source": 422,
+  "source-too-large": 422,
   "source-error": 502,
   "processing-failed": 500,
   "storage-error": 502,

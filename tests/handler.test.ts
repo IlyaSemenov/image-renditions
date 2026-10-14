@@ -95,6 +95,19 @@ describe("failures", () => {
     expect(response.headers.get("cache-control")).toBe("no-store")
   })
 
+  test("answers a source over a size limit as unprocessable", async () => {
+    const server = fakes.createServer({
+      source: {
+        read: () => Promise.reject(new RenditionError("source-too-large")),
+      },
+    })
+
+    const response = await get(createHandler({ server }), catalog.url("avatar", target))
+
+    expect(response.status).toBe(422)
+    expect(await response.text()).toBe("source-too-large")
+  })
+
   test("rejects malformed urls and urls whose extension contradicts the recipe", async () => {
     const handler = createHandler()
     const url = catalog.url("avatar", target)
