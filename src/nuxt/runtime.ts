@@ -1,9 +1,10 @@
 import { useRuntimeConfig } from "nuxt/app"
 import { defineComponent, h, type PropType } from "vue"
 
-import type { Catalog, RenditionTarget } from "../catalog"
+import type { Catalog, RenditionTarget, RenditionVariant } from "../catalog"
 import { isSafePath, isSafeScope } from "../path"
 import { assertDeclaredScope, isDeclaredScope, toDeclaredTarget } from "../scopes"
+import { formatRenditionPath } from "../url"
 
 import { findRenditionAttr } from "./img-attrs"
 
@@ -93,7 +94,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     /**
      * Target of a path in the scope of a call, or `undefined` for an unsafe path.
      *
-     * The scope is checked here because the URL of an original does not go through the rendition URL builder, which checks it too.
+     * The scope is checked here, since the URLs below are built from variants or by `useOriginalUrl` rather than by `catalog.url()`, which would check it.
      */
     function resolveTarget(
       path: string,
@@ -110,15 +111,20 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       return toDeclaredTarget(catalog.scopes, resolved, path)!
     }
 
-    function formatUrl(preset: Name, target: RenditionTarget<Scope>, density?: number) {
-      return base + catalog.url(preset, target, density)
+    /** URL of a variant below the application base URL, built from the variant at hand rather than looked up again. */
+    function formatVariantUrl(
+      { label, hash, recipe }: RenditionVariant,
+      { scope, path }: RenditionTarget<Scope>,
+    ) {
+      return (
+        base +
+        formatRenditionPath(catalog.basePath, { scope, label, hash, format: recipe.format, path })
+      )
     }
 
-    function formatSrcset(preset: Name, target: RenditionTarget<Scope>) {
-      return catalog
-        .variants(preset)
-        .map(({ density }) => `${formatUrl(preset, target, density)} ${density}x`)
-        .join(", ")
+    /** `srcset` value of variants and their URLs. */
+    function formatSrcset(variants: readonly RenditionVariant[], urls: readonly string[]) {
+      return variants.map(({ density }, index) => `${urls[index]} ${density}x`).join(", ")
     }
 
     /**
@@ -137,12 +143,11 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       if (!target) {
         return undefined
       }
-      if (catalog.isOriginal(preset, path)) {
-        // The density is checked for originals too, so a call fails the same way whatever the source.
-        catalog.variant(preset, density)
-        return originalUrl!(target)
-      }
-      return formatUrl(preset, target, density)
+      // The density is checked for originals too, so a call fails the same way whatever the source.
+      const variant = catalog.variant(preset, density, path)
+      return catalog.isOriginal(preset, path)
+        ? originalUrl!(target)
+        : formatVariantUrl(variant, target)
     }
 
     /**
@@ -158,7 +163,14 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       { scope }: Pick<RenditionUrlOptions<Scope>, "scope"> = {},
     ): string | undefined {
       const target = resolveTarget(path, scope)
-      return target && !catalog.isOriginal(preset, path) ? formatSrcset(preset, target) : undefined
+      if (!target || catalog.isOriginal(preset, path)) {
+        return undefined
+      }
+      const variants = catalog.variants(preset, path)
+      return formatSrcset(
+        variants,
+        variants.map(variant => formatVariantUrl(variant, target)),
+      )
     }
 
     /**
@@ -168,6 +180,8 @@ export function createRenditionHelpers<Name extends string, Scope extends string
      * A source that is already a URL, such as a `blob:`, `data:` or `https:` one, is returned unchanged as `src`.
      * A source whose extension the preset lists in `originals` gets only the `src` of the source itself.
      * An unsafe path, such as one with a `..` segment, yields no `src`, so stored data never breaks rendering.
+     *
+     * @throws {RangeError} When the preset is unknown or has no density 1, or the scope is invalid or not one the catalog declares.
      */
     function attrs(
       preset: Name,
@@ -185,17 +199,23 @@ export function createRenditionHelpers<Name extends string, Scope extends string
         // The box of the preset would distort a source of another aspect ratio, so the source keeps its own size.
         return { src: originalUrl!(target) }
       }
-      const { recipe } = catalog.variant(preset)
+      const variants = catalog.variants(preset, path)
+      // `src` and the size come from density 1, so a preset without it fails like `url()`.
+      const main = variants.findIndex(({ density }) => density === 1)
+      if (main < 0) {
+        throw new RangeError(`Preset "${preset}" has no density 1.`)
+      }
+      const { recipe } = variants[main]!
+      const urls = variants.map(variant => formatVariantUrl(variant, target))
       // Without enlargement a small source keeps its own size under `cover` and `fill`, while `contain` always pads the box.
       const boxed =
         recipe.fit === "contain" ||
         ((recipe.fit === "cover" || recipe.fit === "fill") && recipe.enlarge)
       // Attributes are left out rather than set to `undefined`, which would erase those of an element they are bound to.
       return {
-        src: formatUrl(preset, target),
-        ...(catalog.variants(preset).length > 1
-          ? { srcset: formatSrcset(preset, target) }
-          : undefined),
+        src: urls[main],
+        // A single density adds nothing to `src`.
+        ...(variants.length > 1 ? { srcset: formatSrcset(variants, urls) } : undefined),
         ...(size && boxed ? { width: recipe.width, height: recipe.height } : undefined),
       }
     }
