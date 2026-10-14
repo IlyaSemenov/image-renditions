@@ -91,9 +91,9 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       write: true,
       getContents: () =>
         [
-          `import catalog from ${importSpecifier(catalogPath)}`,
+          `import catalog from ${formatImportSpecifier(catalogPath)}`,
           ...(originalUrlPath
-            ? [`import useOriginalUrl from ${importSpecifier(originalUrlPath)}`]
+            ? [`import useOriginalUrl from ${formatImportSpecifier(originalUrlPath)}`]
             : []),
           `import { createRenditionHelpers } from "image-renditions/nuxt/runtime"`,
           "",
@@ -112,6 +112,6 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 
 export default module
 
-function importSpecifier(path: string) {
+function formatImportSpecifier(path: string) {
   return JSON.stringify(path.replace(/\.[cm]?[jt]s$/, ""))
 }

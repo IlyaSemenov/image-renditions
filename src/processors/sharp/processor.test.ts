@@ -17,7 +17,11 @@ function render(source: Uint8Array, options: RenditionOptions) {
   )
 }
 
-async function solid(width: number, height: number, color: { r: number; g: number; b: number }) {
+async function createSolid(
+  width: number,
+  height: number,
+  color: { r: number; g: number; b: number },
+) {
   return sharp({ create: { width, height, channels: 3, background: color } })
     .png()
     .toBuffer()
@@ -26,7 +30,7 @@ async function solid(width: number, height: number, color: { r: number; g: numbe
 describe("encoding", () => {
   test("encodes into the recipe format and resizes into the recipe box", async () => {
     const output = await processor.process(
-      await solid(400, 200, { r: 200, g: 0, b: 0 }),
+      await createSolid(400, 200, { r: 200, g: 0, b: 0 }),
       normalizeRecipe({ options: { width: 64, height: 64 }, pipeline: 1 }),
     )
 
@@ -39,7 +43,7 @@ describe("encoding", () => {
   })
 
   test("does not enlarge raster sources unless asked", async () => {
-    const source = await solid(10, 10, { r: 0, g: 0, b: 0 })
+    const source = await createSolid(10, 10, { r: 0, g: 0, b: 0 })
 
     expect(await sharp((await render(source, { width: 40 })).data).metadata()).toMatchObject({
       width: 10,
@@ -55,7 +59,7 @@ describe("encoding", () => {
 describe("box size", () => {
   // The Nuxt runtime sets `width` and `height` attributes only for outputs that always have the box size.
   test("pads a small source to the box under contain and keeps its size under cover and fill", async () => {
-    const source = await solid(20, 10, { r: 0, g: 0, b: 0 })
+    const source = await createSolid(20, 10, { r: 0, g: 0, b: 0 })
     const box = { width: 48, height: 48 }
 
     for (const [fit, size] of [
@@ -86,8 +90,8 @@ describe("source policies", () => {
 
   test("renders an animation as its first frame", async () => {
     const frames = await Promise.all([
-      solid(8, 8, { r: 255, g: 0, b: 0 }),
-      solid(8, 8, { r: 0, g: 0, b: 255 }),
+      createSolid(8, 8, { r: 255, g: 0, b: 0 }),
+      createSolid(8, 8, { r: 0, g: 0, b: 255 }),
     ])
     const animation = await sharp(frames, { join: { animated: true } })
       .gif()
@@ -105,7 +109,7 @@ describe("source policies", () => {
 
   test("applies EXIF orientation and drops metadata", async () => {
     // Orientation 6 means the stored landscape pixels display rotated by 90° into portrait.
-    const rotated = await sharp(await solid(40, 20, { r: 0, g: 128, b: 0 }))
+    const rotated = await sharp(await createSolid(40, 20, { r: 0, g: 128, b: 0 }))
       .jpeg()
       .withMetadata({ orientation: 6 })
       .toBuffer()
@@ -127,7 +131,7 @@ describe("animation", () => {
   ]
 
   async function createAnimation(width: number, height: number) {
-    const frames = await Promise.all(colors.map(color => solid(width, height, color)))
+    const frames = await Promise.all(colors.map(color => createSolid(width, height, color)))
     return sharp(frames, { join: { animated: true } })
       .gif({ delay: [100, 200, 300], loop: 2 })
       .toBuffer()
@@ -184,7 +188,7 @@ describe("animation", () => {
   })
 
   test("renders a single frame as a still image", async () => {
-    const source = await sharp(await solid(8, 8, colors[0]!))
+    const source = await sharp(await createSolid(8, 8, colors[0]!))
       .gif()
       .toBuffer()
 
@@ -295,7 +299,7 @@ describe("pixel limit", () => {
 
     const failure = await limited
       .process(
-        await solid(10, 10, { r: 0, g: 0, b: 0 }),
+        await createSolid(10, 10, { r: 0, g: 0, b: 0 }),
         normalizeRecipe({ options: { width: 5 }, pipeline: 1 }),
       )
       .catch((error: unknown) => error)
@@ -325,7 +329,7 @@ describe("pixel limit", () => {
     const unlimited = createSharpProcessor({ maxInputPixels: 0 })
 
     const output = await unlimited.process(
-      await solid(10, 10, { r: 0, g: 0, b: 0 }),
+      await createSolid(10, 10, { r: 0, g: 0, b: 0 }),
       normalizeRecipe({ options: { width: 5 }, pipeline: 1 }),
     )
 
@@ -336,7 +340,7 @@ describe("pixel limit", () => {
 describe("side limit", () => {
   const black = { r: 0, g: 0, b: 0 }
   // Enlarged to a width of 30, a strip 1000 times taller than wide would become 30000 pixels tall.
-  const strip = () => solid(1, 1000, black)
+  const strip = () => createSolid(1, 1000, black)
 
   test("scales sources that would exceed the limit less, keeping them whole", async () => {
     const turned = await sharp({
@@ -358,7 +362,7 @@ describe("side limit", () => {
       ],
       [turned, { width: 30, enlarge: true }, { width: 16, height: 16383 }],
       [svg, { width: 100, enlarge: true }, { width: 64, height: 16383 }],
-      [await solid(20000, 1, black), {}, { width: 16383, height: 1 }],
+      [await createSolid(20000, 1, black), {}, { width: 16383, height: 1 }],
     ]
 
     for (const [source, options, size] of cases) {
@@ -390,7 +394,7 @@ describe("side limit", () => {
   })
 
   test("renders a source scaled exactly to the limit", async () => {
-    const output = await render(await solid(25, 1, black), { width: 16383, enlarge: true })
+    const output = await render(await createSolid(25, 1, black), { width: 16383, enlarge: true })
 
     expect(await sharp(output.data).metadata()).toMatchObject({ width: 16383, height: 655 })
   })

@@ -215,9 +215,9 @@ export function normalizeRecipe({
     format,
     quality: format === "png" ? undefined : (options.quality ?? defaultQuality[format]),
     effort: range ? (options.effort ?? range.default) : undefined,
-    svg: policyValue("svg", policy, ["rasterize"]),
+    svg: resolvePolicyValue("svg", policy, ["rasterize"]),
     animation,
-    orientation: policyValue("orientation", policy, ["auto"]),
+    orientation: resolvePolicyValue("orientation", policy, ["auto"]),
   })
 }
 
@@ -232,7 +232,7 @@ export function serializeRecipe(recipe: Recipe): string {
   )
 }
 
-function policyValue<K extends keyof SourcePolicy>(
+function resolvePolicyValue<K extends keyof SourcePolicy>(
   name: K,
   policy: Partial<SourcePolicy> | undefined,
   allowed: readonly SourcePolicy[K][],

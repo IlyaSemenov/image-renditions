@@ -5,7 +5,7 @@ import { formatContentTypes, MAX_DIMENSION, type Recipe } from "../../recipe"
 import { RenditionError } from "../../server/error"
 import type { Processor } from "../../server/processor"
 
-import { estimateRenditionArea, parseColor, planResize, resizeScale } from "./resize"
+import { computeResizeScale, estimateRenditionArea, parseColor, planResize } from "./resize"
 
 /** Options of {@link createSharpProcessor}. */
 export interface SharpProcessorOptions {
@@ -78,7 +78,7 @@ async function render(
   if (metadata.format === "svg") {
     // Vector sources are rasterized at the size the recipe needs, so they fill the box regardless of `enlarge`.
     // Where the long side stays in the rendition, the raster also stays within the side limit, while `cover` and `fill` cut it to the box anyway.
-    const needed = resizeScale(recipe, width, height) ?? 1
+    const needed = computeResizeScale(recipe, width, height) ?? 1
     const scale =
       recipe.fit === "cover" || recipe.fit === "fill"
         ? needed

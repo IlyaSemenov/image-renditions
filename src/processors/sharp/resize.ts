@@ -24,7 +24,7 @@ export function planResize(
     withoutEnlargement: !recipe.enlarge,
   }
   const sized = recipe.width !== undefined || recipe.height !== undefined
-  const scale = resizeScale(recipe, width, height) ?? 1
+  const scale = computeResizeScale(recipe, width, height) ?? 1
   const factor = recipe.enlarge ? scale : Math.min(scale, 1)
   const longest = Math.max(width, height)
   // `fill`, `contain` and `inside` never exceed the box, which is within the limit.
@@ -81,7 +81,7 @@ export function planResize(
  * Returns `undefined` when the recipe sets no size or the source size is unknown.
  * For `fill`, it is the factor of the side that needs more scaling.
  */
-export function resizeScale(
+export function computeResizeScale(
   { width, height, fit }: Recipe,
   sourceWidth: number,
   sourceHeight: number,
@@ -106,7 +106,7 @@ export function estimateRenditionArea(recipe: Recipe, width: number, height: num
   if (recipe.fit === "contain") {
     return recipe.width! * recipe.height!
   }
-  const scale = resizeScale(recipe, width, height) ?? 1
+  const scale = computeResizeScale(recipe, width, height) ?? 1
   const factor = recipe.enlarge ? scale : Math.min(scale, 1)
   // Scaled sides are rounded to whole pixels, so rounding them up keeps the bound.
   const scaledWidth = Math.ceil(width * factor)
@@ -118,6 +118,12 @@ export function estimateRenditionArea(recipe: Recipe, width: number, height: num
 
 /** Converts a normalized `#rrggbbaa` color to the form sharp accepts. */
 export function parseColor(color: string) {
-  const channel = (index: number) => Number.parseInt(color.slice(1 + index * 2, 3 + index * 2), 16)
-  return { r: channel(0), g: channel(1), b: channel(2), alpha: channel(3) / 255 }
+  const parseChannel = (index: number) =>
+    Number.parseInt(color.slice(1 + index * 2, 3 + index * 2), 16)
+  return {
+    r: parseChannel(0),
+    g: parseChannel(1),
+    b: parseChannel(2),
+    alpha: parseChannel(3) / 255,
+  }
 }

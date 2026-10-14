@@ -192,7 +192,7 @@ export function defineCatalog<const Name extends string, const Scope extends str
       ...options
     } = {
       ...definition.defaults,
-      ...withoutUndefined(definition.presets[preset]),
+      ...omitUndefined(definition.presets[preset]),
     }
     if (densities.length === 0 || new Set(densities).size !== densities.length) {
       throw new RangeError(`Preset "${preset}" must declare unique densities.`)
@@ -250,7 +250,7 @@ export function defineCatalog<const Name extends string, const Scope extends str
     }
   }
 
-  function presetByName(preset: Name) {
+  function getPreset(preset: Name) {
     const found = presetsByName.get(preset)
     if (!found) {
       throw new RangeError(`Unknown rendition preset "${preset}".`)
@@ -259,7 +259,7 @@ export function defineCatalog<const Name extends string, const Scope extends str
   }
 
   function variants(preset: Name, path?: string) {
-    const { variants, animatedVariants } = presetByName(preset)
+    const { variants, animatedVariants } = getPreset(preset)
     return animatedVariants && path !== undefined && hasExtension(path, ANIMATED_EXTENSIONS)
       ? animatedVariants
       : variants
@@ -273,7 +273,10 @@ export function defineCatalog<const Name extends string, const Scope extends str
     return found
   }
 
-  function variantUrl({ label, hash, recipe }: RenditionVariant, { scope, path }: RenditionTarget) {
+  function formatVariantUrl(
+    { label, hash, recipe }: RenditionVariant,
+    { scope, path }: RenditionTarget,
+  ) {
     assertDeclaredScope(scopes, scope)
     return formatRenditionPath(basePath, { scope, label, hash, format: recipe.format, path })
   }
@@ -284,14 +287,15 @@ export function defineCatalog<const Name extends string, const Scope extends str
     scopes,
     variants,
     variant,
-    originals: preset => presetByName(preset).originals,
-    isOriginal: (preset, path) => hasExtension(path, presetByName(preset).originals),
+    originals: preset => getPreset(preset).originals,
+    isOriginal: (preset, path) => hasExtension(path, getPreset(preset).originals),
     allVariants: Object.freeze([...variantsByHash.values()]),
     findVariant: hash => variantsByHash.get(hash),
-    url: (preset, target, density) => variantUrl(variant(preset, density, target.path), target),
+    url: (preset, target, density) =>
+      formatVariantUrl(variant(preset, density, target.path), target),
     srcset: (preset, target) =>
       variants(preset, target.path)
-        .map(variant => `${variantUrl(variant, target)} ${variant.density}x`)
+        .map(variant => `${formatVariantUrl(variant, target)} ${variant.density}x`)
         .join(", "),
   })
 }
@@ -303,7 +307,7 @@ function hasExtension(path: string, extensions: readonly string[]) {
   return extension !== undefined && extensions.includes(extension)
 }
 
-function withoutUndefined<T extends object>(value: T): Partial<T> {
+function omitUndefined<T extends object>(value: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined),
   ) as Partial<T>

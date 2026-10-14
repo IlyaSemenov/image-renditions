@@ -241,7 +241,7 @@ export function createRenditionServer<Context, Scope extends string = string>(
     }
   }
 
-  function storageCall<T>(
+  function callStorage<T>(
     reason: "source-error" | "storage-error",
     call: (signal: AbortSignal) => Promise<T>,
   ) {
@@ -253,7 +253,7 @@ export function createRenditionServer<Context, Scope extends string = string>(
   }
 
   async function render(recipe: Recipe, sourceKey: string, key: string) {
-    const data = await storageCall("source-error", signal => source.read(sourceKey, { signal }))
+    const data = await callStorage("source-error", signal => source.read(sourceKey, { signal }))
     if (!data) {
       throw new RenditionError("source-not-found", `The source ${sourceKey} does not exist.`)
     }
@@ -263,7 +263,7 @@ export function createRenditionServer<Context, Scope extends string = string>(
         ? error
         : new RenditionError("processing-failed", `Processing failed: ${error}`, { cause: error })
     })
-    await storageCall("storage-error", signal => results.write(key, image, { signal }))
+    await callStorage("storage-error", signal => results.write(key, image, { signal }))
   }
 
   return {
@@ -282,7 +282,7 @@ export function createRenditionServer<Context, Scope extends string = string>(
       return coordinator.run(rendition.url, async () => {
         // A merged or previously locked run may have published the rendition meanwhile.
         if (!(await isIndexed(rendition.url))) {
-          const exists = await storageCall("storage-error", signal =>
+          const exists = await callStorage("storage-error", signal =>
             results.exists(rendition.key, { signal }),
           )
           if (!exists) {

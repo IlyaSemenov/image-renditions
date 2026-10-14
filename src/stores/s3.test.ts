@@ -16,11 +16,11 @@ import { createS3Results, createS3Source } from "./s3"
 
 const signal = new AbortController().signal
 
-function notFound(name: string) {
+function createNotFoundError(name: string) {
   return Object.assign(new Error(name), { name, $metadata: { httpStatusCode: 404 } })
 }
 
-function body(...chunks: Uint8Array[]) {
+function createBody(...chunks: Uint8Array[]) {
   return {
     transformToWebStream: () =>
       new ReadableStream<Uint8Array>({
@@ -69,9 +69,9 @@ describe("source", () => {
       client: createClient({
         getObject: async ({ Key }) => {
           if (Key !== "a.jpg") {
-            throw notFound("NoSuchKey")
+            throw createNotFoundError("NoSuchKey")
           }
-          return { ContentLength: 2, Body: body(new Uint8Array([1]), new Uint8Array([2])) }
+          return { ContentLength: 2, Body: createBody(new Uint8Array([1]), new Uint8Array([2])) }
         },
       }),
     })
@@ -81,7 +81,7 @@ describe("source", () => {
   })
 
   test("rejects objects above the size limit without reading their body", async () => {
-    const transformToWebStream = mock(body(new Uint8Array(10)).transformToWebStream)
+    const transformToWebStream = mock(createBody(new Uint8Array(10)).transformToWebStream)
     let abortSignal: AbortSignal | undefined
     const source = createS3Source({
       bucket: "b",
@@ -158,7 +158,9 @@ describe("source", () => {
   test("propagates a missing bucket instead of reporting the object as absent", async () => {
     const source = createS3Source({
       bucket: "b",
-      client: createClient({ getObject: () => Promise.reject(notFound("NoSuchBucket")) }),
+      client: createClient({
+        getObject: () => Promise.reject(createNotFoundError("NoSuchBucket")),
+      }),
     })
 
     await expect(source.read("a.jpg", { signal })).rejects.toThrow("NoSuchBucket")
@@ -174,7 +176,7 @@ describe("results", () => {
       client: createClient({
         headObject: async ({ Key }) => {
           if (Key !== "present.avif") {
-            throw notFound("NotFound")
+            throw createNotFoundError("NotFound")
           }
           return {}
         },
