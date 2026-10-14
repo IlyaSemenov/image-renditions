@@ -22,7 +22,7 @@ Do not catalog files or restate information evident from their names and locatio
 ## Architecture
 
 - Keep the root entry browser-safe: it may import only `@noble/hashes`; `tests/entry-imports.test.ts` enforces it.
-- Import `h3` only in `src/h3.ts`, `sharp` only in `src/processors/sharp/`, and `nuxt`, `vue` and `jiti` only in `src/nuxt/`; these packages are optional peers or Nuxt-only dependencies.
+- Import `h3` only in `src/h3.ts`, `sharp` only in `src/processors/sharp/`, `@aws-sdk/client-s3` only in `src/stores/s3.ts`, and `nuxt`, `vue` and `jiti` only in `src/nuxt/`; these packages are optional peers or Nuxt-only dependencies.
 - Keep `jiti` a regular dependency: the Nuxt module must resolve it from this package under isolated installs.
 - Keep `src/server/` independent of storage, processor and framework; it owns the store and processor contracts.
 - Put each store implementation in `src/stores/` and each processor in `src/processors/`, and ship each as its own entry; `tests/entry-imports.test.ts` checks that the server imports no such library.

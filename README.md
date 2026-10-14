@@ -62,7 +62,7 @@ Create a handler for rendition URLs, for example one that reads uploads from the
 
 ```ts
 // server/renditions.ts
-import { S3 } from "@aws-sdk/client-s3"
+import { S3Client } from "@aws-sdk/client-s3"
 import { defineRenditionEventHandler } from "image-renditions/h3"
 import { createS3Results, createS3Source } from "image-renditions/s3"
 import { createRenditionServer } from "image-renditions/server"
@@ -70,7 +70,7 @@ import { createSharpProcessor } from "image-renditions/sharp"
 
 import catalog from "#shared/renditions"
 
-const client = new S3({ region: "us-east-1" })
+const client = new S3Client({ region: "us-east-1" })
 
 const server = createRenditionServer({
   catalog,
@@ -310,10 +310,10 @@ To keep uploads and renditions in S3 buckets, use the stores of `image-rendition
 
 ```ts
 // server/renditions.ts
-import { S3 } from "@aws-sdk/client-s3"
+import { S3Client } from "@aws-sdk/client-s3"
 import { createS3Results, createS3Source } from "image-renditions/s3"
 
-const client = new S3({ region: "us-east-1" })
+const client = new S3Client({ region: "us-east-1" })
 
 const server = createRenditionServer({
   catalog,
@@ -327,7 +327,7 @@ const server = createRenditionServer({
 })
 ```
 
-The stores take the aggregated `S3` client of AWS SDK v3 or any object with its `getObject`, `headObject` and `putObject` methods.
+The stores take a client of AWS SDK v3, the bare `S3Client` or the aggregated `S3`.
 `createS3Results()` writes renditions with `Cache-Control: public, max-age=31536000, immutable`; pass it `cacheControl` to change the header.
 The bucket of renditions must serve them publicly at `publicUrl`, directly or through a CDN.
 

@@ -1,3 +1,10 @@
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  type S3Client,
+} from "@aws-sdk/client-s3"
+
 import { encodePath } from "../path"
 import { RenditionError } from "../server/error"
 import type { ResultStore, SourceStore } from "../server/stores"
@@ -7,40 +14,10 @@ const MAX_KEY_BYTES = 1024
 
 const encoder = new TextEncoder()
 
-/** Per-call options of the S3 client methods. */
-interface S3CallOptions {
-  abortSignal?: AbortSignal
-}
-
-/** Location of an S3 object. */
-interface S3ObjectInput {
-  Bucket: string
-  Key: string
-}
-
-/**
- * Subset of an S3 client used by the S3 stores.
- *
- * The aggregated `S3` client of AWS SDK v3 (`@aws-sdk/client-s3`) satisfies it as is; other clients need a thin wrapper.
- */
-export interface S3ClientLike {
-  getObject(
-    input: S3ObjectInput,
-    options?: S3CallOptions,
-  ): Promise<{
-    Body?: { transformToWebStream(): ReadableStream<Uint8Array> }
-    ContentLength?: number
-  }>
-  headObject(input: S3ObjectInput, options?: S3CallOptions): Promise<unknown>
-  putObject(
-    input: S3ObjectInput & { Body: Uint8Array; ContentType: string; CacheControl: string },
-    options?: S3CallOptions,
-  ): Promise<unknown>
-}
-
 /** Options of {@link createS3Source}. */
 export interface S3SourceOptions {
-  client: S3ClientLike
+  /** Client of AWS SDK v3, such as `S3Client` or the aggregated `S3`. */
+  client: Pick<S3Client, "send">
   bucket: string
   /** Largest source object, in bytes; larger sources fail as too large. */
   maxBytes?: number
@@ -48,7 +25,8 @@ export interface S3SourceOptions {
 
 /** Options of {@link createS3Results}. */
 export interface S3ResultsOptions {
-  client: S3ClientLike
+  /** Client of AWS SDK v3, such as `S3Client` or the aggregated `S3`. */
+  client: Pick<S3Client, "send">
   bucket: string
   /** Public URL of the bucket root, such as `https://storage.example.com/bucket`; objects must be publicly readable. */
   publicUrl: string
@@ -70,10 +48,9 @@ export function createS3Source({
       }
       const controller = new AbortController()
       const output = await client
-        .getObject(
-          { Bucket: bucket, Key: key },
-          { abortSignal: AbortSignal.any([signal, controller.signal]) },
-        )
+        .send(new GetObjectCommand({ Bucket: bucket, Key: key }), {
+          abortSignal: AbortSignal.any([signal, controller.signal]),
+        })
         .catch(ignoreNotFound)
       if (!output?.Body) {
         return undefined
@@ -123,20 +100,20 @@ export function createS3Results({
     async exists(key, { signal }) {
       assertKeyLimit(key)
       const output = await client
-        .headObject({ Bucket: bucket, Key: key }, { abortSignal: signal })
+        .send(new HeadObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal })
         .catch(ignoreNotFound)
       return output !== undefined
     },
     async write(key, { data, contentType }, { signal }) {
       assertKeyLimit(key)
-      await client.putObject(
-        {
+      await client.send(
+        new PutObjectCommand({
           Bucket: bucket,
           Key: key,
           Body: data,
           ContentType: contentType,
           CacheControl: cacheControl,
-        },
+        }),
         { abortSignal: signal },
       )
     },

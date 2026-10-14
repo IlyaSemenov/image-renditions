@@ -64,12 +64,16 @@
     "vue": "^3.5.44"
   },
   "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.1150.0",
     "h3": "^1.15.0 || ^2.0.0",
     "nuxt": "^4.0.0",
     "sharp": "^0.35.0",
     "vue": "^3.5.0"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
     "h3": {
       "optional": true
     },

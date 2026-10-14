@@ -1,8 +1,18 @@
 import { describe, expect, mock, test } from "bun:test"
 
+import {
+  GetObjectCommand,
+  type GetObjectCommandInput,
+  HeadObjectCommand,
+  type HeadObjectCommandInput,
+  PutObjectCommand,
+  type PutObjectCommandInput,
+  type S3Client,
+} from "@aws-sdk/client-s3"
+
 import { RenditionError } from "../server/error"
 
-import { createS3Results, createS3Source, type S3ClientLike } from "./s3"
+import { createS3Results, createS3Source } from "./s3"
 
 const signal = new AbortController().signal
 
@@ -22,9 +32,34 @@ function body(...chunks: Uint8Array[]) {
   }
 }
 
-function createClient(overrides: Partial<S3ClientLike>): S3ClientLike {
+/** Handlers of the commands the S3 stores send, called with the input and options of each. */
+interface CommandHandlers {
+  getObject(input: GetObjectCommandInput, options?: { abortSignal?: AbortSignal }): Promise<unknown>
+  headObject(
+    input: HeadObjectCommandInput,
+    options?: { abortSignal?: AbortSignal },
+  ): Promise<unknown>
+  putObject(input: PutObjectCommandInput, options?: { abortSignal?: AbortSignal }): Promise<unknown>
+}
+
+/** Creates a client that passes each command to its handler, failing commands without one. */
+function createClient(overrides: Partial<CommandHandlers>) {
   const unexpected = () => Promise.reject(new Error("Unexpected call."))
-  return { getObject: unexpected, headObject: unexpected, putObject: unexpected, ...overrides }
+  const { getObject = unexpected, headObject = unexpected, putObject = unexpected } = overrides
+  function send(command: unknown, options?: { abortSignal?: AbortSignal }) {
+    if (command instanceof GetObjectCommand) {
+      return getObject(command.input, options)
+    }
+    if (command instanceof HeadObjectCommand) {
+      return headObject(command.input, options)
+    }
+    if (command instanceof PutObjectCommand) {
+      return putObject(command.input, options)
+    }
+    return unexpected()
+  }
+  // The stores call `send` with one command and options, which the SDK overloads accept among others.
+  return { send } as unknown as Pick<S3Client, "send">
 }
 
 describe("source", () => {
