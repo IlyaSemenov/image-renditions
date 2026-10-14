@@ -99,7 +99,7 @@ export interface RenditionServer<Context> {
    *
    * Serves renditions of recipes the catalog no longer contains.
    *
-   * @throws {RenditionError} Of reason `invalid-request` when the target is rejected.
+   * @throws {RenditionError} When the target is rejected, with reason `invalid-request`.
    */
   findPublished(
     hash: string,
@@ -113,7 +113,7 @@ export interface RenditionServer<Context> {
    * It calls `resolveSource` and checks that the keys are safe, but does not check that the source exists.
    * Full rendition keys and the limits of a store are checked only when a rendition is located or stored.
    *
-   * @throws {RenditionError} Of reason `invalid-request` when the target is rejected or resolves to an unsafe key.
+   * @throws {RenditionError} When the target is rejected or resolves to an unsafe key, with reason `invalid-request`.
    */
   resolve(target: RenditionTarget, context: Context): Promise<Required<SourceResolution>>
 }

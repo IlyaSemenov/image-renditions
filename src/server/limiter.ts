@@ -15,7 +15,7 @@ export interface Limiter {
   /**
    * Runs the task once a slot is free.
    *
-   * @throws {RenditionError} Of reason `overloaded` when the queue is full or the wait times out.
+   * @throws {RenditionError} When the queue is full or the wait times out, with reason `overloaded`.
    */
   run<T>(task: () => Promise<T>): Promise<T>
 }
