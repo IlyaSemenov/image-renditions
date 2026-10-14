@@ -2,7 +2,7 @@ import { encodePath, isSafePath, isSafeScope } from "./path"
 import { formatExtensions, type RenditionFormat } from "./recipe"
 
 /** Version segment of the rendition URL format this library builds and parses. */
-export const URL_FORMAT_VERSION = "v1"
+const URL_FORMAT_VERSION = "v1"
 
 /** Mount path of the rendition handler unless a catalog sets another one. */
 export const DEFAULT_BASE_PATH = "/_renditions"
