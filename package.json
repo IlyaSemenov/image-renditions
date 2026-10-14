@@ -1,6 +1,6 @@
 {
   "name": "image-renditions",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "On-demand image transformations that persist every result to durable storage and keep app servers stateless.",
   "homepage": "https://github.com/IlyaSemenov/image-renditions#readme",
   "bugs": "https://github.com/IlyaSemenov/image-renditions/issues",
