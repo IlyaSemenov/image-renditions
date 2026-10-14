@@ -24,6 +24,13 @@ export interface ModuleOptions {
   handler?: string
   /** Scope for `<RenditionImg>` and `useRenditions()`; their `scope` overrides it. */
   defaultScope?: string
+  /**
+   * Module whose default export is a composable returning a function that builds the URL of a source shown as it is, such as `~/renditions/original-url`.
+   *
+   * Required when a preset lists `originals`.
+   * The function receives the scope, after `defaultScope`, and a safe logical path, which it must encode.
+   */
+  originalUrl?: string
 }
 
 /**
@@ -36,7 +43,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     configKey: "renditions",
   },
 
-  async setup({ catalog: catalogModule, handler, defaultScope }, nuxt) {
+  async setup({ catalog: catalogModule, handler, defaultScope, originalUrl }, nuxt) {
     if (!catalogModule) {
       throw new Error(
         "[image-renditions] Set `renditions.catalog` to the module exporting the catalog.",
@@ -50,6 +57,13 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     const jiti = createJiti(nuxt.options.rootDir, { alias: nuxt.options.alias })
     const catalog = await jiti.import<Catalog>(catalogPath, { default: true })
 
+    if (!originalUrl && catalog.presets.some(preset => catalog.originals(preset).length > 0)) {
+      throw new Error(
+        "[image-renditions] Set `renditions.originalUrl` to the module building URLs of originals, as a preset of the catalog lists `originals`.",
+      )
+    }
+    const originalUrlPath = originalUrl && (await resolvePath(originalUrl))
+
     if (handler) {
       addServerHandler({ route: `${catalog.basePath}/**`, handler: await resolvePath(handler) })
     }
@@ -60,10 +74,16 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       write: true,
       getContents: () =>
         [
-          `import catalog from ${JSON.stringify(catalogPath.replace(/\.[cm]?[jt]s$/, ""))}`,
+          `import catalog from ${importSpecifier(catalogPath)}`,
+          ...(originalUrlPath
+            ? [`import useOriginalUrl from ${importSpecifier(originalUrlPath)}`]
+            : []),
           `import { createRenditionHelpers } from "image-renditions/nuxt/runtime"`,
           "",
-          `export const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, ${JSON.stringify(defaultScope)})`,
+          `export const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, {`,
+          `  defaultScope: ${JSON.stringify(defaultScope)},`,
+          `  useOriginalUrl: ${originalUrlPath ? "useOriginalUrl" : "undefined"},`,
+          `})`,
           "",
         ].join("\n"),
     })
@@ -73,3 +93,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 })
 
 export default module
+
+function importSpecifier(path: string) {
+  return JSON.stringify(path.replace(/\.[cm]?[jt]s$/, ""))
+}

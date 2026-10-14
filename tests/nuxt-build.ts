@@ -49,6 +49,8 @@ try {
   assert(html.includes(`src="${catalog.url("avatar", photo)}"`), html)
   assert(html.includes(`srcset="${catalog.srcset("avatar", photo)}"`), html)
   assert(html.includes(`href="${catalog.url("avatar", photo, 2)}"`), html)
+  // The `originalUrl` module builds the URL of a source the preset shows as it is, with the runtime config of the app.
+  assert(html.includes('src="/originals/brand/logo%20%231.svg"'), html)
 
   // The module mounts the handler at the catalog base path, and the handler renders and stores the rendition.
   const { hash } = catalog.variant("avatar")

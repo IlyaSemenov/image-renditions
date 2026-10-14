@@ -6,6 +6,12 @@ import { assertBasePath, DEFAULT_BASE_PATH, formatRenditionPath } from "./url"
 export interface PresetDefinition extends RenditionOptions {
   /** Pixel densities to render, as multipliers of `width` and `height`; defaults to `[1]`. */
   densities?: readonly number[]
+  /**
+   * Extensions of source files shown as they are instead of rendered, such as `svg`, in lowercase and without the dot.
+   *
+   * They do not affect hashes, and the server still renders such a source when its rendition URL is requested.
+   */
+  originals?: readonly string[]
 }
 
 /** Shared configuration of renditions, imported by both the client and the server. */
@@ -51,6 +57,18 @@ export interface Catalog<Name extends string = string> {
    * @throws {RangeError} When the preset does not declare the density.
    */
   variant(preset: Name, density?: number): RenditionVariant
+  /**
+   * Extensions of source files a preset shows as they are instead of rendered.
+   *
+   * @throws {RangeError} When the preset is unknown.
+   */
+  originals(preset: Name): readonly string[]
+  /**
+   * Whether a preset shows a source as it is instead of rendered, judged by the extension of its path.
+   *
+   * @throws {RangeError} When the preset is unknown.
+   */
+  isOriginal(preset: Name, path: string): boolean
   /** Variant with a recipe hash, if the catalog has one. */
   findVariant(hash: string): RenditionVariant | undefined
   /**
@@ -83,18 +101,30 @@ export function defineCatalog<const Name extends string>(
   const presets = Object.freeze(Object.keys(definition.presets) as Name[])
 
   // The catalog and its variants are frozen, so a recipe keeps matching the hash computed for it here.
-  const variantsByPreset = new Map<Name, readonly RenditionVariant[]>()
+  const presetsByName = new Map<
+    Name,
+    { variants: readonly RenditionVariant[]; originals: readonly string[] }
+  >()
   const variantsByHash = new Map<string, RenditionVariant>()
   for (const preset of presets) {
     if (!/^[\w-]{1,64}$/.test(preset)) {
       throw new RangeError(`Invalid preset name "${preset}".`)
     }
-    const { densities = [1], ...options } = {
+    const {
+      densities = [1],
+      originals = [],
+      ...options
+    } = {
       ...definition.defaults,
       ...withoutUndefined(definition.presets[preset]),
     }
     if (densities.length === 0 || new Set(densities).size !== densities.length) {
       throw new RangeError(`Preset "${preset}" must declare unique densities.`)
+    }
+    if (!originals.every(extension => /^[\da-z]+$/.test(extension))) {
+      throw new RangeError(
+        `Preset "${preset}" must list original extensions in lowercase and without the dot.`,
+      )
     }
     const variants = Object.freeze(
       [...densities]
@@ -112,7 +142,7 @@ export function defineCatalog<const Name extends string>(
           })
         }),
     )
-    variantsByPreset.set(preset, variants)
+    presetsByName.set(preset, { variants, originals: Object.freeze([...originals]) })
     for (const variant of variants) {
       // Presets with equal recipes share renditions, so either variant describes the hash correctly.
       if (!variantsByHash.has(variant.hash)) {
@@ -121,12 +151,23 @@ export function defineCatalog<const Name extends string>(
     }
   }
 
-  function variants(preset: Name) {
-    const found = variantsByPreset.get(preset)
+  function presetByName(preset: Name) {
+    const found = presetsByName.get(preset)
     if (!found) {
       throw new RangeError(`Unknown rendition preset "${preset}".`)
     }
     return found
+  }
+
+  function variants(preset: Name) {
+    return presetByName(preset).variants
+  }
+
+  function isOriginal(preset: Name, path: string) {
+    const { originals } = presetByName(preset)
+    // The extension is taken from the last segment, so a dot in a folder name is not one.
+    const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase()
+    return extension !== undefined && originals.includes(extension)
   }
 
   function variant(preset: Name, density = 1) {
@@ -146,6 +187,8 @@ export function defineCatalog<const Name extends string>(
     presets,
     variants,
     variant,
+    originals: preset => presetByName(preset).originals,
+    isOriginal,
     findVariant: hash => variantsByHash.get(hash),
     url: (preset, target, density) => variantUrl(variant(preset, density), target),
     srcset: (preset, target) =>

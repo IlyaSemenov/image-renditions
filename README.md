@@ -129,6 +129,7 @@ Options of a preset, or of `defaults`, which every preset overrides field by fie
 - `quality` — encoder quality from 1 to 100, by default 50 for `avif` and 80 for `webp` and `jpeg`; `png` is lossless.
 - `effort` — CPU effort of the `avif` (0–9) and `webp` (0–6) encoders, 4 by default; other formats ignore it.
 - `densities` — pixel densities to render, `[1]` by default.
+- `originals` — extensions of sources to show as they are instead of rendered; see [Originals](#originals).
 
 Options of the catalog:
 
@@ -146,8 +147,9 @@ Renaming a preset keeps its stored renditions.
   Otherwise a small source keeps its own size, so size such images with CSS.
 - A `src` that is already a URL, such as `blob:` or `https:`, renders unchanged, for example a preview of a file being uploaded.
 - An unsafe path, such as one with a `..` segment, renders no `src` instead of breaking the page.
+- A source whose extension the preset lists in [`originals`](#originals) renders as it is.
 
-`useRenditions()` builds the same URLs in code, prefixed with `app.baseURL`:
+`useRenditions()` builds the same URLs in code, prefixing rendition URLs with `app.baseURL`:
 
 ```ts
 const renditions = useRenditions()
@@ -165,6 +167,7 @@ Module options, under `renditions`:
 - `catalog` — module exporting the catalog by default; required.
 - `handler` — optional module exporting the h3 handler by default, mounted at the catalog base path.
 - `defaultScope` — optional [scope](#scopes) for `<RenditionImg>` and `useRenditions()`.
+- `originalUrl` — module building URLs of [originals](#originals); required when a preset lists `originals`.
 
 > For users coming from `@nuxt/image`: this module is not an `@nuxt/image` provider, so instead of `<NuxtImg>` and `useImage()`, use `<RenditionImg>` and `useRenditions()` with catalog presets.
 
@@ -223,6 +226,65 @@ With the Nuxt module, `defaultScope: "tenant"` makes `tenant` the scope of every
 ```vue
 <RenditionImg preset="cover" :src="template.coverPath" scope="shared" alt="" />
 ```
+
+## Originals
+
+Some sources are better shown as they are: SVG stays crisp at any zoom, and [`createSharpProcessor()`](#processing) cannot decode ICO or BMP.
+`originals` lists the extensions of such sources, in lowercase and without the dot:
+
+```ts
+export default defineCatalog({
+  defaults: { originals: ["svg", "ico", "bmp"] },
+  presets: {
+    logo: { height: 32 },
+    // Email clients do not show SVG.
+    "email-logo": { height: 32, originals: [] },
+  },
+})
+```
+
+For such a path, `<RenditionImg>` and `useRenditions()` give the URL of the source itself:
+
+- `url()` returns it for every declared density, and `srcset()` returns `undefined`.
+- `<RenditionImg>` renders no `srcset`, `width` or `height`, so size such images with CSS.
+- `gif` in the list shows every GIF as it is, because a path does not tell an animated GIF from a still one.
+- Only the extension is checked, not the content, and the server still renders the source when its rendition URL is requested.
+- Changing `originals` keeps the hashes of the preset.
+
+Only the app knows where its sources are served from, so it builds their URLs.
+Set the module option `originalUrl` to a module whose default export is a composable returning a function from the scope and the logical path to the URL:
+
+```ts
+// app/renditions/original-url.ts
+import { encodePath, type RenditionTarget } from "image-renditions"
+
+export default function useOriginalUrl() {
+  const { uploadsUrl } = useRuntimeConfig().public
+  return ({ path }: RenditionTarget) => `${uploadsUrl}/${encodePath(path)}`
+}
+```
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  renditions: {
+    catalog: "#shared/renditions",
+    originalUrl: "~/renditions/original-url",
+  },
+})
+```
+
+- `useRenditions()` calls the composable every time it is called, so the composable may use other composables.
+- The function receives the scope after `defaultScope`, and a path that is safe but not encoded: `encodePath()` keeps characters such as `#` and `?` inside the path.
+- The URL it returns is used as is, without `app.baseURL`.
+- The build fails when a preset lists `originals` and `originalUrl` is not set.
+
+> `<img>` never runs scripts of an SVG, but an SVG opened as a page runs them on the site it is served from.
+> Keep SVG files that users upload from running scripts as part of the app in any of these ways:
+>
+> - Serve them from a separate domain rather than a subdomain of the app.
+> - Serve them with a `Content-Security-Policy: sandbox` response header.
+> - Store them with `Content-Disposition: attachment`, which S3 keeps with the object, so browsers download such a file instead of opening it.
 
 ## Storage
 
@@ -330,6 +392,19 @@ catalog.srcset("avatar", { scope: "tenant", path: "avatars/42.jpg" })
 ```
 
 They throw a `RangeError` for an unsafe path; check stored paths with `isSafePath()` first.
+With [originals](#originals) in the catalog, check `catalog.isOriginal()` and build the URL of such a source yourself:
+
+```ts
+function logoUrl(path: string) {
+  if (!isSafePath(path)) {
+    return undefined
+  }
+  if (catalog.isOriginal("logo", path)) {
+    return `https://uploads.example.com/${encodePath(path)}`
+  }
+  return catalog.url("logo", { path })
+}
+```
 
 ## Rendering outside requests
 
@@ -444,5 +519,6 @@ The built-in stores and processor implement the same interfaces and serve as exa
 - A source must never change under its key: renditions of a replaced source keep showing the old image.
   Store new content under a new key.
 - Deleting a source leaves its renditions in storage under its result prefix.
-- Animated sources render their first frame, SVG sources are rasterized at the target size, and EXIF orientation is applied.
+- A rendition of an animated source shows its first frame, a rendition of an SVG source is rasterized at the target size, and EXIF orientation is applied.
+  A preset shows such sources as they are when it lists their extensions in [`originals`](#originals).
 - Source paths are limited to 1024 characters.

@@ -189,6 +189,44 @@ describe("urls", () => {
   })
 })
 
+describe("originals", () => {
+  it("inherits originals from defaults unless a preset overrides them", () => {
+    const catalog = defineCatalog({
+      defaults: { originals: ["svg", "ico"] },
+      presets: { logo: { height: 32 }, "email-logo": { height: 32, originals: [] } },
+    })
+
+    expect(catalog.originals("logo")).toEqual(["svg", "ico"])
+    expect(catalog.originals("email-logo")).toEqual([])
+  })
+
+  it("matches the extension of the last path segment in any case", () => {
+    const catalog = defineCatalog({ presets: { logo: { height: 32, originals: ["svg"] } } })
+
+    expect(catalog.isOriginal("logo", "brand/logo.SVG")).toBe(true)
+    expect(catalog.isOriginal("logo", "logo.svg/photo.png")).toBe(false)
+    expect(catalog.isOriginal("logo", "brand.svg/logo")).toBe(false)
+    expect(catalog.isOriginal("logo", "brand/svg")).toBe(false)
+  })
+
+  it("keeps hashes when originals change", () => {
+    const before = defineCatalog({ presets: { logo: { height: 32 } } })
+    const after = defineCatalog({ presets: { logo: { height: 32, originals: ["svg"] } } })
+
+    expect(after.variant("logo").hash).toBe(before.variant("logo").hash)
+  })
+
+  it("keeps its own copy of the list", () => {
+    const originals = ["svg"]
+    const catalog = defineCatalog({ presets: { logo: { height: 32, originals } } })
+
+    originals.push("png")
+
+    expect(catalog.originals("logo")).toEqual(["svg"])
+    expect(Object.isFrozen(catalog.originals("logo"))).toBe(true)
+  })
+})
+
 describe("validation", () => {
   it("rejects invalid presets at definition time", () => {
     const invalid = [
@@ -201,6 +239,9 @@ describe("validation", () => {
       { width: 64, background: "white" },
       { width: 64, densities: [] },
       { width: 64, densities: [1, 1] },
+      { width: 64, originals: [".svg"] },
+      { width: 64, originals: ["SVG"] },
+      { width: 64, originals: [""] },
     ]
     for (const preset of invalid) {
       expect(() => defineCatalog({ presets: { preset } })).toThrow(RangeError)
