@@ -33,10 +33,11 @@ The library is modular, with pluggable parts:
 
 ## When not to use it
 
-- The URL must choose the size, such as `?w=300`.
-  Here every size is a preset in your code.
-- Image processing must not share CPU with your app.
-  Here images are processed inside the app process; a separate image service, such as imgproxy, or a hosted one, such as Cloudflare Images, takes that load elsewhere.
+Use an image service such as [imgproxy](https://imgproxy.net) or [Thumbor](https://thumbor.readthedocs.io) when the URL must choose the size, such as `?w=300`.
+Such a service takes the size and other options from the URL, and to keep clients from changing them it can require URLs signed with a secret key, which must stay out of browser code.
+
+image-renditions renders only the presets of its catalog: a URL carries a hash of the preset options, and a request for any other hash renders nothing.
+Its URLs need no secret, so they can be built in the browser too, but every size must be a preset in your code.
 
 ## Quick start
 
@@ -518,7 +519,7 @@ If `publicUrl` never changes, pass a longer `redirectCacheControl` to `defineRen
 
 ## Concurrency and timeouts
 
-Rendering takes the CPU and memory of the app process, so the `limits` option of `createRenditionServer()` bounds it per process:
+The `limits` option of `createRenditionServer()` bounds rendering per process:
 
 - `concurrency` — renditions processed at once, 2 by default.
 - `queueSize` — renditions waiting for a slot, 100 by default.
