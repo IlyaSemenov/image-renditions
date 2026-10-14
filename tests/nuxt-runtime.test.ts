@@ -41,6 +41,28 @@ describe("useRenditions", () => {
 
     expect(url).toBe(`/base${catalog.url("avatar", { path: "uploads/1/a.jpg" })}`)
   })
+
+  test("lists every density in srcset", () => {
+    const target = { scope: "t", path: "uploads/1/a.jpg" }
+
+    const srcset = createSSRApp({}).runWithContext(() =>
+      useRenditions().srcset("avatar", target.path),
+    )
+
+    expect(srcset).toBe(
+      `/base${catalog.url("avatar", target)} 1x, /base${catalog.url("avatar", target, 2)} 2x`,
+    )
+  })
+
+  test("builds nothing for an unsafe path", () => {
+    createSSRApp({}).runWithContext(() => {
+      const renditions = useRenditions()
+      for (const path of ["uploads/1/..", "uploads/1/\uD800.jpg"]) {
+        expect(renditions.url("avatar", path)).toBeUndefined()
+        expect(renditions.srcset("avatar", path)).toBeUndefined()
+      }
+    })
+  })
 })
 
 describe("RenditionImg", () => {
@@ -74,7 +96,7 @@ describe("RenditionImg", () => {
     }
   })
 
-  test("renders no source for a path no rendition URL can address", async () => {
+  test("renders no source for an unsafe path", async () => {
     for (const src of ["uploads/1/..", "uploads/1/\uD800.jpg"]) {
       expect(await render({ preset: "avatar", src })).toBe("<img>")
     }

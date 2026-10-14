@@ -6,7 +6,7 @@ import { isSafePath } from "../path"
 
 /** Attributes of an `img` element showing a rendition. */
 export interface RenditionImgAttrs {
-  /** Absent for a path no rendition URL can address. */
+  /** Absent for an unsafe path. */
   src?: string
   srcset?: string
   width?: number
@@ -34,19 +34,49 @@ export function createRenditionHelpers<Name extends string>(
   function useRenditions() {
     const base = useRuntimeConfig().app.baseURL.replace(/\/$/, "")
 
-    function url(preset: Name, path: string, { scope, density }: RenditionUrlOptions = {}) {
+    function formatUrl(preset: Name, path: string, { scope, density }: RenditionUrlOptions) {
       return base + catalog.url(preset, { scope: scope ?? defaultScope, path }, density)
     }
 
-    function srcset(
+    function formatSrcset(
       preset: Name,
       path: string,
-      { scope }: Pick<RenditionUrlOptions, "scope"> = {},
+      { scope }: Pick<RenditionUrlOptions, "scope">,
     ) {
       return catalog
         .variants(preset)
-        .map(({ density }) => `${url(preset, path, { scope, density })} ${density}x`)
+        .map(({ density }) => `${formatUrl(preset, path, { scope, density })} ${density}x`)
         .join(", ")
+    }
+
+    /**
+     * URL of a rendition of a logical path.
+     *
+     * Returns `undefined` for an unsafe path, such as one with a `..` segment, so stored data never breaks rendering.
+     *
+     * @throws {RangeError} When the preset is unknown or does not declare the density, or the scope is invalid.
+     */
+    function url(
+      preset: Name,
+      path: string,
+      options: RenditionUrlOptions = {},
+    ): string | undefined {
+      return isSafePath(path) ? formatUrl(preset, path, options) : undefined
+    }
+
+    /**
+     * `srcset` attribute value listing every density of a preset.
+     *
+     * Returns `undefined` for an unsafe path, like `url()`.
+     *
+     * @throws {RangeError} When the preset is unknown, or the scope is invalid.
+     */
+    function srcset(
+      preset: Name,
+      path: string,
+      options: Pick<RenditionUrlOptions, "scope"> = {},
+    ): string | undefined {
+      return isSafePath(path) ? formatSrcset(preset, path, options) : undefined
     }
 
     /**
@@ -54,7 +84,7 @@ export function createRenditionHelpers<Name extends string>(
      *
      * `width` and `height` are set only when the output always has the size of the preset box, so they never distort the image.
      * A source that is already a URL, such as a `blob:`, `data:` or `https:` one, is returned unchanged as `src`.
-     * A path no rendition URL can address, such as one with a `..` segment, yields no `src`, so stored data never breaks rendering.
+     * An unsafe path, such as one with a `..` segment, yields no `src`, so stored data never breaks rendering.
      */
     function attrs(
       preset: Name,
@@ -73,8 +103,9 @@ export function createRenditionHelpers<Name extends string>(
         recipe.fit === "contain" ||
         ((recipe.fit === "cover" || recipe.fit === "fill") && recipe.enlarge)
       return {
-        src: url(preset, path, options),
-        srcset: catalog.variants(preset).length > 1 ? srcset(preset, path, options) : undefined,
+        src: formatUrl(preset, path, options),
+        srcset:
+          catalog.variants(preset).length > 1 ? formatSrcset(preset, path, options) : undefined,
         width: boxed ? recipe.width : undefined,
         height: boxed ? recipe.height : undefined,
       }

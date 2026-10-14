@@ -145,7 +145,7 @@ Renaming a preset keeps its stored renditions.
 - It also renders `width` and `height` when the image always has the preset size: with `contain`, or with `cover` and `fill` when `enlarge` is set.
   Otherwise a small source keeps its own size, so size such images with CSS.
 - A `src` that is already a URL, such as `blob:` or `https:`, renders unchanged, for example a preview of a file being uploaded.
-- A path no rendition URL can address, such as one with a `..` segment, renders no `src` instead of breaking the page.
+- An unsafe path, such as one with a `..` segment, renders no `src` instead of breaking the page.
 
 `useRenditions()` builds the same URLs in code, prefixed with `app.baseURL`:
 
@@ -157,6 +157,8 @@ renditions.url("avatar", path, { density: 2 })
 renditions.srcset("avatar", path)
 renditions.attrs("avatar", path) // attributes <RenditionImg> renders, for your own img element
 ```
+
+`url()` and `srcset()` return `undefined` for an unsafe path.
 
 Module options, under `renditions`:
 
@@ -326,6 +328,8 @@ catalog.url("avatar", { path: "avatars/42.jpg" })
 
 catalog.srcset("avatar", { scope: "tenant", path: "avatars/42.jpg" })
 ```
+
+They throw a `RangeError` for an unsafe path; check stored paths with `isSafePath()` first.
 
 ## Rendering outside requests
 

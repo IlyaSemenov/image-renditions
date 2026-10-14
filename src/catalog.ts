@@ -53,9 +53,17 @@ export interface Catalog<Name extends string = string> {
   variant(preset: Name, density?: number): RenditionVariant
   /** Variant with a recipe hash, if the catalog has one. */
   findVariant(hash: string): RenditionVariant | undefined
-  /** Root-relative URL of a rendition. */
+  /**
+   * Root-relative URL of a rendition.
+   *
+   * @throws {RangeError} When the preset is unknown or does not declare the density, or the scope or path is unsafe to put into the URL.
+   */
   url(preset: Name, target: RenditionTarget, density?: number): string
-  /** `srcset` attribute value listing every density of a preset. */
+  /**
+   * `srcset` attribute value listing every density of a preset.
+   *
+   * @throws {RangeError} When the preset is unknown, or the scope or path is unsafe to put into the URL.
+   */
   srcset(preset: Name, target: RenditionTarget): string
 }
 
