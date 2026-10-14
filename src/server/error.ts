@@ -1,3 +1,5 @@
+import type { SourceResolution } from "./server"
+
 /** Why a rendition could not be served. */
 export type RenditionFailureReason =
   /** The URL is malformed, the source resolver rejected its target, or a key is unsafe or too long for the store. */
@@ -18,15 +20,23 @@ export type RenditionFailureReason =
   /** The processing queue is full, or a request waited in it for too long. */
   | "overloaded"
 
+/** Options of a {@link RenditionError}. */
+export interface RenditionErrorOptions extends ErrorOptions {
+  source?: Readonly<Required<SourceResolution>>
+}
+
 /** Failure of a rendition operation, with a reason a failure policy can tell apart. */
 export class RenditionError extends Error {
   override name = "RenditionError"
+  /** Keys of the target, present when the failure happened after the server resolved them and checked that they are safe; the source need not exist. */
+  readonly source?: Readonly<Required<SourceResolution>>
 
   constructor(
     readonly reason: RenditionFailureReason,
     message: string = reason,
-    options?: ErrorOptions,
+    options?: RenditionErrorOptions,
   ) {
     super(message, options)
+    this.source = options?.source
   }
 }

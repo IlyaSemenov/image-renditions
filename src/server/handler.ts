@@ -3,7 +3,7 @@ import { toDeclaredTarget } from "../scopes"
 import { parseRenditionPath, type RenditionAddress } from "../url"
 
 import { RenditionError, type RenditionFailureReason } from "./error"
-import type { RenditionServer } from "./server"
+import type { RenditionServer, SourceResolution } from "./server"
 
 /** HTTP request fields a rendition handler reads. */
 export interface RenditionRequest {
@@ -24,6 +24,8 @@ export interface RenditionFailure<Context, Scope extends string = string> {
    * It does not mean that `resolveSource` accepts the target or that the source exists.
    */
   target?: RenditionTarget<Scope>
+  /** Keys of the target, present when the failure happened after the server resolved them and checked that they are safe; the source need not exist. */
+  source?: Readonly<Required<SourceResolution>>
   context: Context
 }
 
@@ -97,6 +99,7 @@ export function createRenditionHandler<Context, Scope extends string = string>({
           error,
           address,
           target,
+          source: error.source,
           context: await getContext(),
         }))) ??
       new Response(error.reason, {
@@ -151,11 +154,17 @@ export function createRenditionHandler<Context, Scope extends string = string>({
     // Resolved outside the try block, so its failures propagate without `onFailure`.
     const context = await getContext()
     try {
-      const rendition = variant
-        ? await server.ensure(variant.recipe, target, context)
-        : await server.findPublished(address.hash, address.format, target, context)
-      if (!rendition) {
-        throw new RenditionError("unknown-recipe", `Unknown recipe ${address.hash}.`)
+      let rendition
+      if (variant) {
+        rendition = await server.ensure(variant.recipe, target, context)
+      } else {
+        const lookup = await server.findPublished(address.hash, address.format, target, context)
+        if (!lookup.rendition) {
+          throw new RenditionError("unknown-recipe", `Unknown recipe ${address.hash}.`, {
+            source: lookup.source,
+          })
+        }
+        rendition = lookup.rendition
       }
       return new Response(null, {
         status: 307,

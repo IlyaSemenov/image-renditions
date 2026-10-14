@@ -104,6 +104,14 @@ export interface Rendition {
   url: string
 }
 
+/** Result of {@link RenditionServer.findPublished}. */
+export interface PublishedLookup {
+  /** Keys of the target. */
+  source: Readonly<Required<SourceResolution>>
+  /** Rendition the readiness indexes know, if any. */
+  rendition?: Rendition
+}
+
 /** Generates renditions and finds published ones. */
 // Function properties rather than methods make TypeScript check parameters strictly, so a server that needs a context cannot pass for one that does not.
 export interface RenditionServer<Context, Scope extends string = string> {
@@ -118,7 +126,7 @@ export interface RenditionServer<Context, Scope extends string = string> {
    */
   ensure: (recipe: Recipe, target: RenditionTarget<Scope>, context: Context) => Promise<Rendition>
   /**
-   * Finds a rendition by recipe hash in the readiness indexes, without any storage call.
+   * Finds a rendition by recipe hash in the readiness indexes, without any storage call, and returns it with the keys of the target.
    *
    * Serves renditions of recipes the catalog no longer contains.
    *
@@ -129,7 +137,7 @@ export interface RenditionServer<Context, Scope extends string = string> {
     format: RenditionFormat,
     target: RenditionTarget<Scope>,
     context: Context,
-  ) => Promise<Rendition | undefined>
+  ) => Promise<PublishedLookup>
   /**
    * Storage locations of a target as `ensure()` uses them, with `resultPrefix` defaulting to `sourceKey`.
    *
@@ -138,7 +146,10 @@ export interface RenditionServer<Context, Scope extends string = string> {
    *
    * @throws {RenditionError} When the scope is not declared, or the target is rejected or resolves to an unsafe key, with reason `invalid-request`.
    */
-  resolve: (target: RenditionTarget<Scope>, context: Context) => Promise<Required<SourceResolution>>
+  resolve: (
+    target: RenditionTarget<Scope>,
+    context: Context,
+  ) => Promise<Readonly<Required<SourceResolution>>>
 }
 
 /** Longest delay of Node timers, in milliseconds. */
@@ -208,22 +219,22 @@ export function createRenditionServer<Context, Scope extends string = string>(
     if (!isSafePath(sourceKey) || !isSafePath(resultPrefix)) {
       throw createUnsafeKeyError(target)
     }
-    return { sourceKey, resultPrefix }
+    // Frozen, as failures of every later step carry it.
+    return Object.freeze({ sourceKey, resultPrefix })
   }
 
-  async function locate(
+  function locate(
+    { resultPrefix }: Required<SourceResolution>,
     hash: string,
     format: RenditionFormat,
     target: RenditionTarget<Scope>,
-    context: Context,
-  ) {
-    const { sourceKey, resultPrefix } = await resolve(target, context)
+  ): Rendition {
     const key = `${resultPrefix}/${hash}.${formatExtensions[format]}`
     // A safe prefix can still make the full key too long.
     if (!isSafePath(key)) {
       throw createUnsafeKeyError(target)
     }
-    return { sourceKey, rendition: { key, url: results.url(key) } }
+    return { key, url: results.url(key) }
   }
 
   async function isIndexed(url: string) {
@@ -295,42 +306,66 @@ export function createRenditionServer<Context, Scope extends string = string>(
       // Recipes of the catalog are checked at creation, but `ensure()` may get one from anywhere.
       processor.assertRecipe?.(recipe)
       const hash = hashRecipe(recipe)
-      const { sourceKey, rendition } = await locate(hash, recipe.format, target, context)
-      if (await isIndexed(rendition.url)) {
-        return rendition
-      }
-      return coordinator.run(rendition.url, async () => {
-        // A merged or previously locked run may have published the rendition meanwhile.
-        if (!(await isIndexed(rendition.url))) {
-          const exists = await callStorage("storage-error", signal =>
-            results.exists(rendition.key, { signal }),
-          )
-          if (!exists) {
-            const degradation = await limiter.run(() => render(recipe, sourceKey, rendition.key))
-            if (degradation) {
-              // A copy of the rendition keeps the callback from changing the result.
-              notify(onDegradation, {
-                ...degradation,
-                recipe,
-                target,
-                context,
-                rendition: { ...rendition },
-              })
-            }
-          }
-          await markPublished(rendition.url)
+      const source = await resolve(target, context)
+      try {
+        const rendition = locate(source, hash, recipe.format, target)
+        if (await isIndexed(rendition.url)) {
+          return rendition
         }
-        return rendition
-      })
+        // Awaited inside the try block, so the failures of a run merged with others get the keys of this call.
+        return await coordinator.run(rendition.url, async () => {
+          // A merged or previously locked run may have published the rendition meanwhile.
+          if (!(await isIndexed(rendition.url))) {
+            const exists = await callStorage("storage-error", signal =>
+              results.exists(rendition.key, { signal }),
+            )
+            if (!exists) {
+              const degradation = await limiter.run(() =>
+                render(recipe, source.sourceKey, rendition.key),
+              )
+              if (degradation) {
+                // A copy of the rendition keeps the callback from changing the result.
+                notify(onDegradation, {
+                  ...degradation,
+                  recipe,
+                  target,
+                  context,
+                  rendition: { ...rendition },
+                })
+              }
+            }
+            await markPublished(rendition.url)
+          }
+          return rendition
+        })
+      } catch (error) {
+        throw attachSource(error, source)
+      }
     },
 
     async findPublished(hash, format, target, context) {
-      const { rendition } = await locate(hash, format, target, context)
-      return (await isIndexed(rendition.url)) ? rendition : undefined
+      const source = await resolve(target, context)
+      try {
+        const rendition = locate(source, hash, format, target)
+        return (await isIndexed(rendition.url)) ? { source, rendition } : { source }
+      } catch (error) {
+        throw attachSource(error, source)
+      }
     },
 
     resolve,
   }
+}
+
+/**
+ * Copies a rendition failure with the keys of its target, and passes other errors on.
+ *
+ * A new error is made because the caught one may be shared, by calls merged into one run or by a store or a processor that throws one instance.
+ */
+function attachSource(error: unknown, source: Readonly<Required<SourceResolution>>) {
+  return error instanceof RenditionError
+    ? new RenditionError(error.reason, error.message, { cause: error, source })
+    : error
 }
 
 /** Calls an optional callback without waiting for it, so a failing or hanging callback cannot affect the operation. */

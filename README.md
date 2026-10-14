@@ -566,14 +566,13 @@ Otherwise the request fails as `unknown-recipe` without calling the stores, so m
 export default defineRenditionEventHandler({
   server,
   getContext,
-  async onFailure({ reason, error, target, context }) {
+  async onFailure({ reason, error, source }) {
     if (reason === "storage-error" || reason === "processing-failed") {
       reportError(error)
     }
-    if (reason === "unknown-recipe" && target) {
+    if (reason === "unknown-recipe" && source) {
       // Here sources are public, so an outdated URL shows the original instead.
-      const { sourceKey } = await server.resolve(target, context)
-      return Response.redirect(`https://uploads.example.com/${encodePath(sourceKey)}`, 302)
+      return Response.redirect(`https://uploads.example.com/${encodePath(source.sourceKey)}`, 302)
     }
     return undefined
   },
@@ -581,7 +580,8 @@ export default defineRenditionEventHandler({
 ```
 
 - `target` is the target of the URL, absent when the URL is malformed or its scope is not declared.
-- `server.resolve()` returns the keys a target resolves to with `resolveSource`, after checking that they are safe.
+- `source` holds the keys of the target, absent when the request failed before the server resolved them and checked that they are safe; the source need not exist.
+- `server.resolve()` returns the keys of any target, as `resolveSource` gives them after checking that they are safe.
 
 Returning `undefined` keeps the default response.
 Every failure response, including a replaced one, is sent with `Cache-Control: no-store`.

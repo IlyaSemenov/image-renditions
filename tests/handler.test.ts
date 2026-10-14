@@ -91,6 +91,30 @@ describe("failures", () => {
     )
   })
 
+  test("passes the keys of the target to the failure policy without resolving it again", async () => {
+    const resolver = mock(resolveSource)
+    const failures: RenditionFailure<TestContext>[] = []
+    const handler = createRenditionHandler<TestContext>({
+      server: fakes.createServer({ resolveSource: resolver }),
+      onFailure: failure => void failures.push(failure),
+    })
+
+    await get(handler, `/_renditions/v1/t/avatar.${"0".repeat(12)}.avif/${target.path}`)
+    await get(handler, "/_renditions/v1/malformed")
+
+    expect(failures.map(({ reason, source }) => ({ reason, source }))).toEqual([
+      {
+        reason: "unknown-recipe",
+        source: {
+          sourceKey: "tenant/acme/uploads/1/photo.jpg",
+          resultPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
+        },
+      },
+      { reason: "invalid-request", source: undefined },
+    ])
+    expect(resolver).toHaveBeenCalledTimes(1)
+  })
+
   test("lets the failure policy answer, without letting it be cached", async () => {
     const handler = createHandler({
       onFailure: ({ reason, address }) =>

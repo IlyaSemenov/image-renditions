@@ -78,7 +78,8 @@ describe("ensure", () => {
     expect(failure).toBeInstanceOf(RenditionError)
     expect((failure as RenditionError).reason).toBe("storage-error")
     expect(
-      await server.findPublished(catalog.variant("avatar").hash, "avif", target, tenant),
+      (await server.findPublished(catalog.variant("avatar").hash, "avif", target, tenant))
+        .rendition,
     ).toBeUndefined()
 
     fakes.control.failWrites = false
@@ -117,7 +118,41 @@ describe("ensure", () => {
       .catch((error: unknown) => error)
 
     expect((failure as RenditionError).reason).toBe("source-not-found")
+    expect((failure as RenditionError).source).toEqual({
+      sourceKey: "tenant/acme/uploads/2/missing.jpg",
+      resultPrefix: "tenant/acme/derived/uploads/2/missing.jpg",
+    })
     expect(fakes.calls.write).toBe(0)
+  })
+
+  test("gives each call the keys of its own target, even when a failure is shared", async () => {
+    // A processor may throw one instance for every call, and merged calls share one failure.
+    const shared = new RenditionError("unsupported-source")
+    const server = fakes.createServer({
+      processor: {
+        async process() {
+          throw shared
+        },
+      },
+    })
+    const other = { scope: "g", path: "uploads/1/photo.jpg" }
+
+    const failures = await Promise.all(
+      [target, target, other].map(item =>
+        server.ensure(avatar, item, tenant).then(
+          () => expect.unreachable(),
+          (error: unknown) => error as RenditionError,
+        ),
+      ),
+    )
+
+    expect(failures.map(failure => failure.source?.sourceKey)).toEqual([
+      "tenant/acme/uploads/1/photo.jpg",
+      "tenant/acme/uploads/1/photo.jpg",
+      "uploads/1/photo.jpg",
+    ])
+    expect(failures.map(failure => failure.reason)).toEqual(Array(3).fill("unsupported-source"))
+    expect(failures.every(failure => failure !== shared && failure.cause === shared)).toBe(true)
   })
 
   test("rejects targets the resolver does not serve and unsafe resolved keys", async () => {
@@ -132,6 +167,9 @@ describe("ensure", () => {
 
     expect((unknownScope as RenditionError).reason).toBe("invalid-request")
     expect((unsafeKey as RenditionError).reason).toBe("invalid-request")
+    // The keys are attached only once the resolver accepts them.
+    expect((unknownScope as RenditionError).source).toBeUndefined()
+    expect((unsafeKey as RenditionError).source).toBeUndefined()
     expect(fakes.storageCalls()).toBe(0)
   })
 })
@@ -199,7 +237,8 @@ describe("shared readiness index", () => {
       })
 
       expect(
-        await server.findPublished(catalog.variant("avatar").hash, "avif", target, tenant),
+        (await server.findPublished(catalog.variant("avatar").hash, "avif", target, tenant))
+          .rendition,
       ).toBeUndefined()
       expect(fakes.storageCalls()).toBe(0)
       expect(errors).toHaveLength(1)
@@ -230,11 +269,13 @@ describe("findPublished", () => {
     const server = fakes.createServer()
     const { hash } = catalog.variant("avatar")
 
-    expect(await server.findPublished(hash, "avif", target, tenant)).toBeUndefined()
+    const source = await server.resolve(target, tenant)
+
+    expect(await server.findPublished(hash, "avif", target, tenant)).toEqual({ source })
     const rendition = await server.ensure(avatar, target, tenant)
     const before = fakes.storageCalls()
 
-    expect(await server.findPublished(hash, "avif", target, tenant)).toEqual(rendition)
+    expect(await server.findPublished(hash, "avif", target, tenant)).toEqual({ source, rendition })
     expect(fakes.storageCalls()).toBe(before)
   })
 })
