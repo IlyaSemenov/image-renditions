@@ -1,5 +1,5 @@
 export * from "./catalog"
-export * from "./hash"
+export { hashRecipe } from "./hash"
 export * from "./path"
 export * from "./recipe"
 export * from "./url"

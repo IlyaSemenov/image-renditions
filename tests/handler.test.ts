@@ -64,7 +64,7 @@ describe("published renditions", () => {
 
 describe("failures", () => {
   test("answers an unknown hash without storage calls", async () => {
-    const hash = "0".repeat(32)
+    const hash = "0".repeat(12)
 
     const response = await get(
       createHandler(),
@@ -77,6 +77,20 @@ describe("failures", () => {
     expect(fakes.storageCalls()).toBe(0)
   })
 
+  test("answers a hash of another format as an unknown recipe of its target", async () => {
+    const onFailure = mock(() => undefined)
+
+    const response = await get(
+      createHandler({ onFailure }),
+      `/_renditions/v1/t/avatar.${"0".repeat(32)}.avif/${target.path}`,
+    )
+
+    expect(response.status).toBe(404)
+    expect(onFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "unknown-recipe", target }),
+    )
+  })
+
   test("lets the failure policy answer, without letting it be cached", async () => {
     const handler = createHandler({
       onFailure: ({ reason, address }) =>
@@ -87,7 +101,7 @@ describe("failures", () => {
 
     const response = await get(
       handler,
-      `/_renditions/v1/t/avatar.${"0".repeat(32)}.avif/${target.path}`,
+      `/_renditions/v1/t/avatar.${"0".repeat(12)}.avif/${target.path}`,
     )
 
     expect(response.status).toBe(302)

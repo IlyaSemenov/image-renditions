@@ -8,10 +8,10 @@ Resize and re-encode uploaded images when a page first shows them, store each re
 
 ```html
 <img
-  src="/_renditions/v1/avatar.faf7e221f65dd97945e352a57e805252.avif/avatars/42.jpg"
+  src="/_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg"
   srcset="
-    /_renditions/v1/avatar.faf7e221f65dd97945e352a57e805252.avif/avatars/42.jpg    1x,
-    /_renditions/v1/avatar@2x.b62b90cf6c3ed57e4c1c27da0c36d778.avif/avatars/42.jpg 2x
+    /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg    1x,
+    /_renditions/v1/avatar@2x.b62b90cf6c3e.avif/avatars/42.jpg 2x
   "
   alt=""
 />
@@ -232,7 +232,7 @@ export default defineRenditionEventHandler({
 - Map different scopes to different keys even for equal paths.
 - A rendition is stored in the result store at `<sourceKey>/<hash>.<extension>`.
   To keep renditions in the bucket of uploads, also return a `resultPrefix` that no source key starts with, such as `` `renditions/${sourceKey}` ``, to use instead of `sourceKey`.
-- S3 limits a key to 1024 bytes in UTF-8, and a rendition key adds up to 38 bytes to its result prefix.
+- S3 limits a key to 1024 bytes in UTF-8, and the library writes a rendition under a key up to 18 bytes longer than its result prefix.
   If source keys can come that close to the limit, return a shorter `resultPrefix`, or their renditions fail as `invalid-request`.
 
 Derive the context from the URL only, host included, for example from the tenant's domain: browsers and CDNs cache the redirect to a rendition by its URL for a day.
@@ -443,7 +443,7 @@ Build URLs in the app with the catalog, which is safe to import in browsers:
 
 ```ts
 catalog.url("avatar", { path: "avatars/42.jpg" })
-// /_renditions/v1/avatar.faf7e221f65dd97945e352a57e805252.avif/avatars/42.jpg
+// /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg
 
 catalog.srcset("avatar", { scope: "tenant", path: "avatars/42.jpg" })
 ```

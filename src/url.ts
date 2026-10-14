@@ -1,4 +1,3 @@
-import { RECIPE_HASH_LENGTH } from "./hash"
 import { encodePath, isSafePath, isSafeScope } from "./path"
 import { formatExtensions, type RenditionFormat } from "./recipe"
 
@@ -96,8 +95,13 @@ function isSafeLabel(label: string) {
   return /^[\w@.-]{1,64}$/.test(label)
 }
 
+/**
+ * Checks that a recipe hash is 1 to 64 ASCII letters, digits, `_` or `-`, which need no encoding in a URL or a storage key.
+ *
+ * The grammar does not fix the format of hashes, so a hash the catalog cannot produce is looked up as a published rendition instead of making the URL malformed.
+ */
 function isHash(hash: string) {
-  return hash.length === RECIPE_HASH_LENGTH && /^[\da-f]+$/.test(hash)
+  return /^[\w-]{1,64}$/.test(hash)
 }
 
 function decodeSegment(segment: string) {

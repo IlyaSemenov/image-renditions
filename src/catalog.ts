@@ -5,6 +5,7 @@ import {
   type Recipe,
   type RenditionAnimation,
   type RenditionOptions,
+  serializeRecipe,
   type SourcePolicy,
 } from "./recipe"
 import { assertDeclaredScope } from "./scopes"
@@ -243,8 +244,14 @@ export function defineCatalog<const Name extends string, const Scope extends str
       animatedVariants,
     })
     for (const variant of [...variants, ...(animatedVariants ?? [])]) {
-      // Presets with equal recipes share renditions, so either variant describes the hash correctly.
-      if (!variantsByHash.has(variant.hash)) {
+      const known = variantsByHash.get(variant.hash)
+      // Presets with equal recipes share renditions, so either variant describes the hash correctly, while different recipes must not share them.
+      if (known && serializeRecipe(known.recipe) !== serializeRecipe(variant.recipe)) {
+        throw new RangeError(
+          `Variants "${known.label}" and "${variant.label}" have different recipes of the same hash; change pipelineVersion to change every hash.`,
+        )
+      }
+      if (!known) {
         variantsByHash.set(variant.hash, variant)
       }
     }

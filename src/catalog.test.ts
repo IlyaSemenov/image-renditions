@@ -59,6 +59,16 @@ describe("recipe identity", () => {
     expect(explicit.variant("wide").hash).toBe(implicit.variant("wide").hash)
   })
 
+  it("rejects different recipes of the same hash", () => {
+    // A search over sizes found these two recipes, whose truncated hashes collide.
+    const presets = { a: { width: 9230, height: 168 }, b: { width: 10785, height: 202 } }
+
+    expect(() => defineCatalog({ presets })).toThrow(RangeError)
+    expect(defineCatalog({ presets: { a: presets.a } }).variant("a").hash).toBe(
+      defineCatalog({ presets: { b: presets.b } }).variant("b").hash,
+    )
+  })
+
   it("freezes the catalog, its variants and their recipes", () => {
     const catalog = defineCatalog({ presets: { avatar: { width: 64, densities: [1, 2] } } })
     const variants = catalog.variants("avatar")
@@ -169,7 +179,9 @@ describe("urls", () => {
       `/img/v1/s/avatar.${hash}.avif/a%5Cb`,
       `/img/v1/s/avatar.${hash}.avif/%E0%A4%A`,
       `/img/v1/s/avatar.${hash}.avif/`,
-      `/img/v1/s/avatar.${hash.slice(1)}.avif/a`,
+      `/img/v1/s/avatar.${"0".repeat(65)}.avif/a`,
+      `/img/v1/s/avatar.a%41.avif/a`,
+      `/img/v1/s/avatar.a~b.avif/a`,
       `/img/v1/s/avatar.${hash}/a`,
       `/img/v1/s/avatar.${hash}.gif/a`,
       `/img/v1/s/.${hash}.avif/a`,
@@ -179,6 +191,12 @@ describe("urls", () => {
       `/other/v1/s/avatar.${hash}.avif/a`,
     ]) {
       expect(parseRenditionPath("/img", url)).toBeUndefined()
+    }
+  })
+
+  it("parses hashes of other formats", () => {
+    for (const hash of ["0", "0".repeat(32), "0".repeat(64), "Ab_9-"]) {
+      expect(parseRenditionPath("/img", `/img/v1/avatar.${hash}.avif/a`)?.hash).toBe(hash)
     }
   })
 
