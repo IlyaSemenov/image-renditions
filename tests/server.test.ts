@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import { defineCatalog, type Recipe } from "image-renditions"
-import { RenditionError } from "image-renditions/server"
+import { type Processor, type RenditionDegradation, RenditionError } from "image-renditions/server"
 
-import { catalog, createDeferred, createFakes } from "./fakes"
+import { catalog, createDeferred, createFakes, type TestContext } from "./fakes"
 
 const tenant = { tenant: "acme" }
 const target = { scope: "t", path: "uploads/1/photo.jpg" }
@@ -343,6 +343,66 @@ describe("processor", () => {
       RangeError,
     )
     expect(fakes.storageCalls()).toBe(0)
+  })
+})
+
+describe("degradation", () => {
+  const degradation = { reason: "animation-frames", message: "Too many frames." }
+  const processor: Processor = {
+    async process(source) {
+      return { data: source, contentType: "image/avif", degradation }
+    },
+  }
+
+  test("is reported once, when the rendition is written", async () => {
+    const reported: RenditionDegradation<TestContext>[] = []
+    const onDegradation = (event: RenditionDegradation<TestContext>) => void reported.push(event)
+    const server = fakes.createServer({ processor, onDegradation })
+
+    const [rendition] = await Promise.all(
+      Array.from({ length: 3 }, () => server.ensure(avatar, target, tenant)),
+    )
+    await server.ensure(avatar, target, tenant)
+    await fakes.createServer({ processor, onDegradation }).ensure(avatar, target, tenant)
+
+    expect(reported).toEqual([
+      { ...degradation, recipe: avatar, target, context: tenant, rendition: rendition! },
+    ])
+    expect(reported[0]!.rendition).not.toBe(rendition)
+    expect(fakes.results.get(rendition!.key)).toEqual({
+      data: new Uint8Array([1]),
+      contentType: "image/avif",
+    })
+  })
+
+  test("is not reported when writing fails", async () => {
+    const reported: RenditionDegradation<TestContext>[] = []
+    const server = fakes.createServer({
+      processor,
+      onDegradation: event => void reported.push(event),
+    })
+    fakes.control.failWrites = true
+
+    await expect(server.ensure(avatar, target, tenant)).rejects.toThrow(RenditionError)
+    expect(reported).toEqual([])
+  })
+
+  test("ignores a callback that throws, rejects or hangs", async () => {
+    for (const callback of [
+      () => {
+        throw new Error("Reporter failed.")
+      },
+      () => Promise.reject(new Error("Reporter failed.")),
+      () => new Promise<never>(() => {}),
+    ]) {
+      // A stored rendition is not rendered again, so every callback gets a fresh store.
+      fakes.results.clear()
+      const onDegradation = mock(callback)
+      const server = fakes.createServer({ processor, onDegradation })
+
+      expect(await server.ensure(avatar, target, tenant)).toHaveProperty("url")
+      expect(onDegradation).toHaveBeenCalledTimes(1)
+    }
   })
 })
 

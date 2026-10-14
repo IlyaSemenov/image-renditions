@@ -8,7 +8,7 @@ import { isDeclaredScope } from "../scopes"
 import { type Coordinator, createLocalCoordinator } from "./coordinator"
 import { RenditionError } from "./error"
 import { createLimiter } from "./limiter"
-import type { Processor } from "./processor"
+import type { Degradation, Processor } from "./processor"
 import {
   createMemoryReadinessIndex,
   type MemoryReadinessIndexOptions,
@@ -78,6 +78,22 @@ export interface RenditionServerOptions<Context, Scope extends string = string> 
    * It is not awaited, and its own failures are ignored.
    */
   onError?(error: unknown): void
+  /**
+   * Receives a degradation the processor reports for a rendition it rendered, such as the first frame of an animation beyond a limit, once the rendition is written.
+   *
+   * Later requests for the rendition do not report it again.
+   * It is not awaited, and its own failures are ignored.
+   */
+  onDegradation?(degradation: RenditionDegradation<Context, Scope>): void
+}
+
+/** Degradation a processor reported for a rendition the server wrote. */
+export interface RenditionDegradation<Context, Scope extends string = string> extends Degradation {
+  recipe: Recipe
+  target: RenditionTarget<Scope>
+  /** Context of the call that rendered the rendition, which may be any of the concurrent calls for it. */
+  context: Context
+  rendition: Rendition
 }
 
 /** Published rendition. */
@@ -136,7 +152,15 @@ const MAX_TIMEOUT = 2 ** 31 - 1
 export function createRenditionServer<Context, Scope extends string = string>(
   options: RenditionServerOptions<Context, Scope>,
 ): RenditionServer<Context, Scope> {
-  const { catalog, source, results, processor, resolveSource = resolveUnscoped, onError } = options
+  const {
+    catalog,
+    source,
+    results,
+    processor,
+    resolveSource = resolveUnscoped,
+    onError,
+    onDegradation,
+  } = options
   const memory = createMemoryReadinessIndex(options.readiness?.memory)
   const shared = options.readiness?.shared
   const coordinator = options.coordinator ?? createLocalCoordinator()
@@ -226,18 +250,8 @@ export function createRenditionServer<Context, Scope extends string = string>(
     try {
       return await withTimeout(indexTimeout, call)
     } catch (error) {
-      report(error)
+      notify(onError, error)
       return undefined
-    }
-  }
-
-  /** Passes an error to `onError` without waiting for it, so a failing or hanging callback cannot affect the operation. */
-  function report(error: unknown) {
-    try {
-      // The callback is typed as synchronous, but an async one returns a promise whose rejection must not go unhandled.
-      Promise.resolve(onError?.(error)).catch(() => {})
-    } catch {
-      // A throwing callback is ignored like a rejecting one.
     }
   }
 
@@ -253,17 +267,23 @@ export function createRenditionServer<Context, Scope extends string = string>(
   }
 
   async function render(recipe: Recipe, sourceKey: string, key: string) {
-    const data = await callStorage("source-error", signal => source.read(sourceKey, { signal }))
-    if (!data) {
+    const input = await callStorage("source-error", signal => source.read(sourceKey, { signal }))
+    if (!input) {
       throw new RenditionError("source-not-found", `The source ${sourceKey} does not exist.`)
     }
     // Processing has no timeout: a processor cannot be interrupted, so a timeout would not free the processing slot.
-    const image = await processor.process(data, recipe).catch((error: unknown) => {
-      throw error instanceof RenditionError
-        ? error
-        : new RenditionError("processing-failed", `Processing failed: ${error}`, { cause: error })
-    })
-    await callStorage("storage-error", signal => results.write(key, image, { signal }))
+    const { data, contentType, degradation } = await processor
+      .process(input, recipe)
+      .catch((error: unknown) => {
+        throw error instanceof RenditionError
+          ? error
+          : new RenditionError("processing-failed", `Processing failed: ${error}`, { cause: error })
+      })
+    // The store gets the fields by name, since a rest copy would skip fields a processor returns as getters.
+    await callStorage("storage-error", signal =>
+      results.write(key, { data, contentType }, { signal }),
+    )
+    return degradation
   }
 
   return {
@@ -286,7 +306,17 @@ export function createRenditionServer<Context, Scope extends string = string>(
             results.exists(rendition.key, { signal }),
           )
           if (!exists) {
-            await limiter.run(() => render(recipe, sourceKey, rendition.key))
+            const degradation = await limiter.run(() => render(recipe, sourceKey, rendition.key))
+            if (degradation) {
+              // A copy of the rendition keeps the callback from changing the result.
+              notify(onDegradation, {
+                ...degradation,
+                recipe,
+                target,
+                context,
+                rendition: { ...rendition },
+              })
+            }
           }
           await markPublished(rendition.url)
         }
@@ -300,6 +330,16 @@ export function createRenditionServer<Context, Scope extends string = string>(
     },
 
     resolve,
+  }
+}
+
+/** Calls an optional callback without waiting for it, so a failing or hanging callback cannot affect the operation. */
+function notify<T>(callback: ((value: T) => void) | undefined, value: T) {
+  try {
+    // The callback is typed as synchronous, but an async one returns a promise whose rejection must not go unhandled.
+    Promise.resolve(callback?.(value)).catch(() => {})
+  } catch {
+    // A throwing callback is ignored like a rejecting one.
   }
 }
 

@@ -1,9 +1,9 @@
-import sharp, { type Metadata } from "sharp"
+import sharp, { type Metadata, type Sharp } from "sharp"
 
 import { assertInteger } from "../../assert"
 import { formatContentTypes, MAX_DIMENSION, type Recipe } from "../../recipe"
 import { RenditionError } from "../../server/error"
-import type { Processor } from "../../server/processor"
+import type { Degradation, Processor } from "../../server/processor"
 
 import { computeResizeScale, estimateRenditionArea, parseColor, planResize } from "./resize"
 
@@ -25,6 +25,14 @@ export interface SharpProcessorOptions {
 interface AnimationLimits {
   maxAnimationPixels: number
   maxFrames: number
+}
+
+/** How a rendition treats the frames of a source. */
+interface AnimationPlan {
+  /** Whether the rendition keeps every frame rather than the first one. */
+  animated: boolean
+  /** Why the rendition shows the first frame of an animation its recipe keeps. */
+  degradation?: Degradation
 }
 
 /** Rasterization density SVG renders at when no scaling is needed, in DPI. */
@@ -50,14 +58,20 @@ export function createSharpProcessor({
       assertRecipe(recipe)
       // One pipeline avoids a separate buffer of decoded pixels, so its failures are not told apart and all count as source failures, as most of them are.
       // Failures detected before the pipeline, such as the pixel limit, keep their own reason.
-      const data = await render(source, recipe, maxInputPixels, limits).catch((error: unknown) => {
-        throw error instanceof RenditionError
-          ? error
-          : new RenditionError("unsupported-source", "The source cannot be processed.", {
-              cause: error,
-            })
-      })
-      return { data: new Uint8Array(data), contentType: formatContentTypes[recipe.format] }
+      const { data, degradation } = await render(source, recipe, maxInputPixels, limits).catch(
+        (error: unknown) => {
+          throw error instanceof RenditionError
+            ? error
+            : new RenditionError("unsupported-source", "The source cannot be processed.", {
+                cause: error,
+              })
+        },
+      )
+      return {
+        data: new Uint8Array(data),
+        contentType: formatContentTypes[recipe.format],
+        degradation,
+      }
     },
   }
 }
@@ -93,7 +107,8 @@ async function render(
   }
   // An animation the recipe keeps is read whole, and its pixel limit covers all frames, which the budget check has kept within the animation limit.
   // Otherwise only the first page or frame is read, which renders an animation as its first frame.
-  const frames = keepsAnimation(recipe, metadata, limits)
+  const animation = planAnimation(recipe, metadata, limits)
+  const frames = animation.animated
     ? { animated: true, limitInputPixels: limits.maxAnimationPixels }
     : { pages: 1 }
   let pipeline = sharp(source, { ...input, density, ...frames }).autoOrient()
@@ -109,6 +124,10 @@ async function render(
     pipeline = pipeline.flatten({ background: parseColor(recipe.background!) })
   }
   pipeline = pipeline.toColourspace("srgb")
+  return { data: await encode(pipeline, recipe), degradation: animation.degradation }
+}
+
+function encode(pipeline: Sharp, recipe: Recipe) {
   switch (recipe.format) {
     case "avif":
       return pipeline.avif({ quality: recipe.quality, effort: recipe.effort }).toBuffer()
@@ -122,31 +141,44 @@ async function render(
 }
 
 /**
- * Whether a rendition keeps the animation of a source, judged by the metadata of its first frame.
+ * Plans whether a rendition keeps the animation of a source, judged by the metadata of its first frame.
  *
  * Sharp resizes and crops the frames one by one, so the planned geometry of the first frame applies to every frame.
  */
-function keepsAnimation(
+function planAnimation(
   recipe: Recipe,
   { format, pages = 1, width, height, orientation = 1 }: Metadata,
   { maxAnimationPixels, maxFrames }: AnimationLimits,
-) {
+): AnimationPlan {
   // Pages of other formats, such as TIFF, are not frames of an animation.
-  // Sharp cannot apply EXIF orientation to several frames.
-  if (
-    recipe.animation !== "preserve" ||
-    (format !== "gif" && format !== "webp") ||
-    pages < 2 ||
-    orientation !== 1
-  ) {
-    return false
+  if (recipe.animation !== "preserve" || (format !== "gif" && format !== "webp") || pages < 2) {
+    return { animated: false }
+  }
+  if (orientation !== 1) {
+    return degrade(
+      "animation-orientation",
+      `Sharp cannot apply the EXIF orientation ${orientation} to the frames of an animation.`,
+    )
+  }
+  if (maxFrames > 0 && pages > maxFrames) {
+    return degrade(
+      "animation-frames",
+      `The animation of ${pages} frames exceeds the frame limit of ${maxFrames}.`,
+    )
   }
   // Every frame is decoded and encoded, so the budget covers the larger of the source and the rendition.
   const pixels = Math.max(width * height, estimateRenditionArea(recipe, width, height)) * pages
-  return (
-    (maxFrames === 0 || pages <= maxFrames) &&
-    (maxAnimationPixels === 0 || pixels <= maxAnimationPixels)
-  )
+  if (maxAnimationPixels > 0 && pixels > maxAnimationPixels) {
+    return degrade(
+      "animation-pixels",
+      `The animation of ${pixels} pixels exceeds the animation pixel limit of ${maxAnimationPixels}.`,
+    )
+  }
+  return { animated: true }
+}
+
+function degrade(reason: string, message: string): AnimationPlan {
+  return { animated: false, degradation: { reason, message } }
 }
 
 /**

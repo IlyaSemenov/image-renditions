@@ -98,8 +98,9 @@ describe("source policies", () => {
       .toBuffer()
     expect((await sharp(animation).metadata()).pages).toBe(2)
 
-    const { data } = await render(animation, {})
+    const { data, degradation } = await render(animation, {})
 
+    expect(degradation).toBeUndefined()
     const metadata = await sharp(data).metadata()
     const { dominant } = await sharp(data).stats()
     expect(metadata.pages ?? 1).toBe(1)
@@ -166,6 +167,7 @@ describe("animation", () => {
       const output = await processor.process(source, preserve({ width: 16, height: 16, fit }))
 
       expect(output.contentType).toBe("image/webp")
+      expect(output.degradation).toBeUndefined()
       expect(await sharp(output.data).metadata()).toMatchObject({
         width: 16,
         height: 16,
@@ -192,28 +194,50 @@ describe("animation", () => {
       .gif()
       .toBuffer()
 
-    const { data } = await processor.process(source, preserve({}))
+    const { data, degradation } = await processor.process(source, preserve({}))
 
+    expect(degradation).toBeUndefined()
     expect((await sharp(data).metadata()).pages ?? 1).toBe(1)
   })
 
-  test("renders the first frame of an animation beyond a limit", async () => {
+  test("renders the first frame of an animation beyond a limit and reports the limit", async () => {
     const source = await createAnimation(40, 20)
     // Small frames padded to a large box count at the size of the rendition.
     const small = await createAnimation(4, 4)
 
-    for (const [limited, input, options] of [
-      [createSharpProcessor({ maxFrames: 2 }), source, {}],
-      [createSharpProcessor({ maxAnimationPixels: 2000 }), source, {}],
+    for (const [limited, input, options, degradation] of [
+      [
+        createSharpProcessor({ maxFrames: 2 }),
+        source,
+        {},
+        {
+          reason: "animation-frames",
+          message: "The animation of 3 frames exceeds the frame limit of 2.",
+        },
+      ],
+      [
+        createSharpProcessor({ maxAnimationPixels: 2000 }),
+        source,
+        {},
+        {
+          reason: "animation-pixels",
+          message: "The animation of 2400 pixels exceeds the animation pixel limit of 2000.",
+        },
+      ],
       [
         createSharpProcessor({ maxAnimationPixels: 2000 }),
         small,
         { width: 40, height: 40, fit: "contain" },
+        {
+          reason: "animation-pixels",
+          message: "The animation of 4800 pixels exceeds the animation pixel limit of 2000.",
+        },
       ],
     ] as const) {
-      const { data } = await limited.process(input, preserve(options))
+      const output = await limited.process(input, preserve(options))
 
-      expect(await readFrameColors(data)).toEqual(["r"])
+      expect(output.degradation).toEqual(degradation)
+      expect(await readFrameColors(output.data)).toEqual(["r"])
     }
     const unlimited = createSharpProcessor({ maxAnimationPixels: 0, maxFrames: 0 })
     expect(
@@ -227,8 +251,9 @@ describe("animation", () => {
       .withMetadata({ orientation: 6 })
       .toBuffer()
 
-    const { data } = await processor.process(oriented, preserve({}))
+    const { data, degradation } = await processor.process(oriented, preserve({}))
 
+    expect(degradation?.reason).toBe("animation-orientation")
     expect(await sharp(data).metadata()).toMatchObject({ width: 20, height: 40 })
     expect(await readFrameColors(data)).toEqual(["r"])
   })
