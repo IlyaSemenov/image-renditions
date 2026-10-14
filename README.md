@@ -168,6 +168,7 @@ renditions.url("cover", post.coverPath)
 renditions.url("avatar", path, { density: 2 })
 renditions.srcset("avatar", path)
 renditions.attrs("avatar", path) // src, srcset and size of <RenditionImg>, for your own img element
+renditions.attrs("avatar", path, { size: false }) // src and srcset, for a component that sizes the image itself
 ```
 
 `url()` and `srcset()` return `undefined` for an unsafe path.

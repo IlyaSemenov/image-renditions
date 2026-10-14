@@ -55,6 +55,28 @@ describe("useRenditions", () => {
     )
   })
 
+  test("leaves the size out of the attributes on request, keeping the size of the element", async () => {
+    const target = { scope: "t", path: "uploads/1/a.jpg" }
+    const app = createSSRApp({
+      render: () =>
+        h("img", {
+          width: 32,
+          height: 32,
+          ...useRenditions().attrs("avatar", target.path, { size: false }),
+        }),
+    })
+
+    const attrs = app.runWithContext(() =>
+      useRenditions().attrs("avatar", target.path, { size: false }),
+    )
+
+    expect(attrs).toStrictEqual({
+      src: `/base${catalog.url("avatar", target)}`,
+      srcset: `/base${catalog.url("avatar", target)} 1x, /base${catalog.url("avatar", target, 2)} 2x`,
+    })
+    expect(await renderToString(app)).toContain('width="32" height="32"')
+  })
+
   test("builds nothing for an unsafe path", () => {
     createSSRApp({}).runWithContext(() => {
       const renditions = useRenditions()

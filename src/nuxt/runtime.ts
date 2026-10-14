@@ -36,6 +36,14 @@ export interface RenditionUrlOptions<Scope extends string = string> {
   density?: number
 }
 
+/** Options of the `img` attributes of a rendition. */
+export interface RenditionAttrsOptions<Scope extends string = string> {
+  /** Scope of the path; defaults to the module's `defaultScope`. */
+  scope?: Scope
+  /** Whether to set `width` and `height`; `false` leaves the size to a component that sizes the image itself. */
+  size?: boolean
+}
+
 /** Options of {@link createRenditionHelpers}. */
 export interface RenditionHelpersOptions<Scope extends string = string> {
   /** Scope of calls that set none. */
@@ -156,7 +164,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     /**
      * Attributes of an `img` element showing every density of a preset.
      *
-     * `width` and `height` are set only when the output always has the size of the preset box, so they never distort the image.
+     * `width` and `height` are set only when the output always has the size of the preset box, so they never distort the image, and `size: false` leaves them out.
      * A source that is already a URL, such as a `blob:`, `data:` or `https:` one, is returned unchanged as `src`.
      * A source whose extension the preset lists in `originals` gets only the `src` of the source itself.
      * An unsafe path, such as one with a `..` segment, yields no `src`, so stored data never breaks rendering.
@@ -164,7 +172,7 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     function attrs(
       preset: Name,
       path: string,
-      { scope }: Pick<RenditionUrlOptions<Scope>, "scope"> = {},
+      { scope, size = true }: RenditionAttrsOptions<Scope> = {},
     ): RenditionImgAttrs {
       if (/^(?:[a-z][\d+.a-z-]*:|\/\/)/i.test(path)) {
         return { src: path }
@@ -182,11 +190,13 @@ export function createRenditionHelpers<Name extends string, Scope extends string
       const boxed =
         recipe.fit === "contain" ||
         ((recipe.fit === "cover" || recipe.fit === "fill") && recipe.enlarge)
+      // Attributes are left out rather than set to `undefined`, which would erase those of an element they are bound to.
       return {
         src: formatUrl(preset, target),
-        srcset: catalog.variants(preset).length > 1 ? formatSrcset(preset, target) : undefined,
-        width: boxed ? recipe.width : undefined,
-        height: boxed ? recipe.height : undefined,
+        ...(catalog.variants(preset).length > 1
+          ? { srcset: formatSrcset(preset, target) }
+          : undefined),
+        ...(size && boxed ? { width: recipe.width, height: recipe.height } : undefined),
       }
     }
 
