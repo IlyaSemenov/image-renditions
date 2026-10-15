@@ -1,5 +1,7 @@
+import type { Catalog } from "./catalog"
 import { encodePath, isSafePath, isSafeScope } from "./path"
 import { formatExtensions, type RenditionFormat } from "./recipe"
+import { assertDeclaredScope } from "./scopes"
 
 /** Version segment of the rendition URL format this library builds and parses. */
 const URL_FORMAT_VERSION = "v1"
@@ -21,15 +23,18 @@ export interface RenditionAddress {
 }
 
 /**
- * Formats the path of a rendition URL: `<basePath>/v1/[<scope>/]<label>.<hash>.<extension>/<path>`.
+ * Formats the path of a rendition URL of a catalog: `<basePath>/v1/[<scope>/]<path>/<label>.<hash>.<extension>`.
  *
- * @throws {RangeError} When a part is unsafe to put into the URL.
+ * The URL has a scope exactly when the catalog declares scopes.
+ *
+ * @throws {RangeError} When a part is unsafe to put into the URL, or the scope is missing, not declared, or given to a catalog without scopes.
  */
 export function formatRenditionPath(
-  basePath: string,
+  { basePath, scopes }: Pick<Catalog, "basePath" | "scopes">,
   { scope, label, hash, format, path }: RenditionAddress,
 ): string {
   assertBasePath(basePath)
+  assertDeclaredScope(scopes, scope)
   assertSafeTarget(scope, path)
   const extension = formatExtensions[format]
   if (!isSafeLabel(label) || !isHash(hash) || !extension) {
@@ -63,25 +68,29 @@ export function joinRenditionPath(
   encodedPath: string,
 ): string {
   const scopePrefix = scope === undefined ? "" : `${scope}/`
-  return `${basePath}/${URL_FORMAT_VERSION}/${scopePrefix}${label}.${hash}.${formatExtensions[format]}/${encodedPath}`
+  return `${basePath}/${URL_FORMAT_VERSION}/${scopePrefix}${encodedPath}/${label}.${hash}.${formatExtensions[format]}`
 }
 
 /**
- * Parses the path of a rendition URL, ignoring any query string.
+ * Parses the path of a rendition URL of a catalog, ignoring any query string.
  *
- * Returns `undefined` for a path outside `basePath`, another URL format version, or malformed or unsafe parts.
+ * The URL has a scope exactly when the catalog declares scopes; whether the catalog declares this scope is left to the caller.
+ * Returns `undefined` for a path outside the base path of the catalog, another URL format version, or malformed or unsafe parts.
  */
-export function parseRenditionPath(basePath: string, url: string): RenditionAddress | undefined {
+export function parseRenditionPath(
+  { basePath, scopes }: Pick<Catalog, "basePath" | "scopes">,
+  url: string,
+): RenditionAddress | undefined {
   const prefix = `${basePath}/${URL_FORMAT_VERSION}/`
   const pathname = url.split("?", 1)[0]!
   if (!pathname.startsWith(prefix)) {
     return undefined
   }
-  const parts = pathname.slice(prefix.length).split("/")
-  // A scope has no dots and a variant always has two, so the first part tells whether the scope is present.
-  const scope = isSafeScope(parts[0]!) ? parts.shift() : undefined
-  const [variant, ...encodedSegments] = parts
-  if (!variant) {
+  const encodedSegments = pathname.slice(prefix.length).split("/")
+  // A scope looks like any segment of a path, so only the catalog tells whether the URL has one.
+  const scope = scopes ? encodedSegments.shift()! : undefined
+  const variant = encodedSegments.pop()
+  if ((scope !== undefined && !isSafeScope(scope)) || !variant) {
     return undefined
   }
   // The label may contain dots of fractional densities, so the hash and the extension are taken from the end.

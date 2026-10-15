@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import { defineCatalog } from "./catalog"
-import { parseRenditionPath } from "./url"
+import { formatRenditionPath, parseRenditionPath } from "./url"
 
 const target = { path: "uploads/1/photo.jpg" }
 
@@ -122,15 +122,19 @@ describe("urls", () => {
     presets: { avatar: { width: 64 } },
   })
   const unscoped = defineCatalog({ basePath: "/img", presets: { avatar: { width: 64 } } })
+  const hash = catalog.variant("avatar").hash
 
-  it("round-trips the scope, variant and source path", () => {
+  it("round-trips the scope, source path and variant", () => {
     const path = "uploads/1/фото #1?.jpg"
-    const variant = catalog.variant("avatar")
+    const url = catalog.url("avatar", { scope: "global", path })
 
-    expect(parseRenditionPath("/img", catalog.url("avatar", { scope: "global", path }))).toEqual({
+    expect(url).toBe(
+      `/img/v1/global/uploads/1/%D1%84%D0%BE%D1%82%D0%BE%20%231%3F.jpg/avatar.${hash}.avif`,
+    )
+    expect(parseRenditionPath(catalog, url)).toEqual({
       scope: "global",
       label: "avatar",
-      hash: variant.hash,
+      hash,
       format: "avif",
       path,
     })
@@ -139,33 +143,62 @@ describe("urls", () => {
   it("omits the scope in a catalog without scopes", () => {
     const url = unscoped.url("avatar", { path: "uploads/1/photo.jpg" })
 
-    expect(url).toBe(`/img/v1/avatar.${unscoped.variant("avatar").hash}.avif/uploads/1/photo.jpg`)
-    expect(parseRenditionPath("/img", url)).toEqual({
+    expect(url).toBe(`/img/v1/uploads/1/photo.jpg/avatar.${hash}.avif`)
+    expect(parseRenditionPath(unscoped, url)).toEqual({
       label: "avatar",
-      hash: unscoped.variant("avatar").hash,
+      hash,
       format: "avif",
       path: "uploads/1/photo.jpg",
+    })
+  })
+
+  it("reads the first segment as the scope only in a catalog with scopes", () => {
+    const url = `/img/v1/s/a.jpg/avatar.${hash}.avif`
+
+    expect(parseRenditionPath(catalog, url)).toMatchObject({ scope: "s", path: "a.jpg" })
+    expect(parseRenditionPath(unscoped, url)).toMatchObject({ scope: undefined, path: "s/a.jpg" })
+  })
+
+  it("takes the variant from the last segment, even after a segment that looks like one", () => {
+    const path = `uploads/avatar.${hash}.avif`
+
+    expect(parseRenditionPath(unscoped, unscoped.url("avatar", { path }))).toMatchObject({
+      label: "avatar",
+      path,
     })
   })
 
   it("round-trips control characters other than NUL", () => {
     const path = "uploads/1/photo\t2026.png"
 
-    expect(parseRenditionPath("/img", catalog.url("avatar", { scope: "s", path }))?.path).toBe(path)
+    expect(parseRenditionPath(catalog, catalog.url("avatar", { scope: "s", path }))?.path).toBe(
+      path,
+    )
   })
 
   it("keeps equal paths of different scopes apart", () => {
     const tenant = parseRenditionPath(
-      "/img",
+      catalog,
       catalog.url("avatar", { scope: "tenant", path: target.path }),
     )
     const global = parseRenditionPath(
-      "/img",
+      catalog,
       catalog.url("avatar", { scope: "global", path: target.path }),
     )
 
     expect(tenant?.scope).toBe("tenant")
     expect(global?.scope).toBe("global")
+  })
+
+  it("formats the urls the catalog builds", () => {
+    const address = { label: "avatar", hash, format: "avif" as const, path: target.path }
+
+    expect(formatRenditionPath(catalog, { ...address, scope: "s" })).toBe(
+      catalog.url("avatar", { scope: "s", path: target.path }),
+    )
+    expect(formatRenditionPath(unscoped, address)).toBe(unscoped.url("avatar", target))
+    expect(() => formatRenditionPath(catalog, address)).toThrow(RangeError)
+    expect(() => formatRenditionPath(unscoped, { ...address, scope: "s" })).toThrow(RangeError)
   })
 
   it("rejects unsafe source paths when building", () => {
@@ -175,40 +208,41 @@ describe("urls", () => {
   })
 
   it("rejects unsafe or malformed urls when parsing", () => {
-    const hash = catalog.variant("avatar").hash
     for (const url of [
-      `/img/v1/s/avatar.${hash}.avif/a/../b`,
-      `/img/v1/s/avatar.${hash}.avif/a/%2e%2e/b`,
-      `/img/v1/s/avatar.${hash}.avif/a%2Fb`,
-      `/img/v1/s/avatar.${hash}.avif/a//b`,
-      `/img/v1/s/avatar.${hash}.avif/a%5Cb`,
-      `/img/v1/s/avatar.${hash}.avif/%E0%A4%A`,
-      `/img/v1/s/avatar.${hash}.avif/`,
-      `/img/v1/s/avatar.${"0".repeat(65)}.avif/a`,
-      `/img/v1/s/avatar.a%41.avif/a`,
-      `/img/v1/s/avatar.a~b.avif/a`,
-      `/img/v1/s/avatar.${hash}/a`,
-      `/img/v1/s/avatar.${hash}.gif/a`,
-      `/img/v1/s/.${hash}.avif/a`,
-      `/img/v1/s/avatar/a`,
-      `/img/v1/s%20x/avatar.${hash}.avif/a`,
-      `/img/v2/s/avatar.${hash}.avif/a`,
-      `/other/v1/s/avatar.${hash}.avif/a`,
+      `/img/v1/s/a/../b/avatar.${hash}.avif`,
+      `/img/v1/s/a/%2e%2e/b/avatar.${hash}.avif`,
+      `/img/v1/s/a%2Fb/avatar.${hash}.avif`,
+      `/img/v1/s/a//b/avatar.${hash}.avif`,
+      `/img/v1/s/a%5Cb/avatar.${hash}.avif`,
+      `/img/v1/s/%E0%A4%A/avatar.${hash}.avif`,
+      `/img/v1/s/avatar.${hash}.avif`,
+      `/img/v1/s/a/avatar.${hash}.avif/`,
+      `/img/v1/s`,
+      `/img/v1/s/a/avatar.${"0".repeat(65)}.avif`,
+      `/img/v1/s/a/avatar.a%41.avif`,
+      `/img/v1/s/a/avatar.a~b.avif`,
+      `/img/v1/s/a/avatar.${hash}`,
+      `/img/v1/s/a/avatar.${hash}.gif`,
+      `/img/v1/s/a/.${hash}.avif`,
+      `/img/v1/s/a/avatar`,
+      `/img/v1/s%20x/a/avatar.${hash}.avif`,
+      `/img/v2/s/a/avatar.${hash}.avif`,
+      `/other/v1/s/a/avatar.${hash}.avif`,
     ]) {
-      expect(parseRenditionPath("/img", url)).toBeUndefined()
+      expect(parseRenditionPath(catalog, url)).toBeUndefined()
     }
   })
 
   it("parses hashes of other formats", () => {
-    for (const hash of ["0", "0".repeat(32), "0".repeat(64), "Ab_9-"]) {
-      expect(parseRenditionPath("/img", `/img/v1/avatar.${hash}.avif/a`)?.hash).toBe(hash)
+    for (const other of ["0", "0".repeat(32), "0".repeat(64), "Ab_9-"]) {
+      expect(parseRenditionPath(unscoped, `/img/v1/a/avatar.${other}.avif`)?.hash).toBe(other)
     }
   })
 
   it("ignores the query string", () => {
     const url = unscoped.url("avatar", target)
 
-    expect(parseRenditionPath("/img", `${url}?v=1`)?.path).toBe(target.path)
+    expect(parseRenditionPath(unscoped, `${url}?v=1`)?.path).toBe(target.path)
   })
 })
 
@@ -221,7 +255,7 @@ describe("scopes", () => {
   it("builds urls of declared scopes", () => {
     const url = catalog.url("avatar", { scope: "global", path: "a.jpg" })
 
-    expect(parseRenditionPath(catalog.basePath, url)?.scope).toBe("global")
+    expect(parseRenditionPath(catalog, url)?.scope).toBe("global")
   })
 
   it("rejects targets without a declared scope", () => {
@@ -316,7 +350,7 @@ describe("animation", () => {
     const target = { path: "uploads/1/a.gif" }
     const [single, double] = catalog.variants("clip", target.path)
 
-    expect(parseRenditionPath(catalog.basePath, catalog.url("clip", target, 2))).toMatchObject({
+    expect(parseRenditionPath(catalog, catalog.url("clip", target, 2))).toMatchObject({
       label: "clip@2x",
       hash: double!.hash,
       format: "webp",

@@ -116,8 +116,8 @@ describe("RenditionImg", () => {
     expect(await render({ preset: "clip", src: target.path })).toBe(
       `<img src="/base${catalog.url("clip", target)}" srcset="/base${catalog.url("clip", target)} 1x, /base${catalog.url("clip", target, 2)} 2x" width="48" height="48">`,
     )
-    expect(catalog.url("clip", target)).toContain(`.${single!.hash}.webp/`)
-    expect(catalog.url("clip", target, 2)).toContain(`.${double!.hash}.webp/`)
+    expect(catalog.url("clip", target)).toEndWith(`.${single!.hash}.webp`)
+    expect(catalog.url("clip", target, 2)).toEndWith(`.${double!.hash}.webp`)
   })
 
   test("omits the size of a preset whose output may keep the source size or aspect ratio", async () => {

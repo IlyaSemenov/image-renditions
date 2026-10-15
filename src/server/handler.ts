@@ -126,7 +126,7 @@ export function createRenditionHandler<Context, Scope extends string = string>({
         headers: { allow: "GET, HEAD", "cache-control": "no-store" },
       })
     }
-    const address = parseRenditionPath(catalog.basePath, path)
+    const address = parseRenditionPath(catalog, path)
     if (!address) {
       const error = new RenditionError("invalid-request", "Malformed rendition URL.")
       return fail(error, undefined, undefined, getContext)
@@ -136,9 +136,7 @@ export function createRenditionHandler<Context, Scope extends string = string>({
     if (!target) {
       const error = new RenditionError(
         "invalid-request",
-        address.scope === undefined
-          ? "The URL has no scope."
-          : `The scope ${address.scope} is not declared.`,
+        `The scope ${address.scope} is not declared.`,
       )
       return fail(error, address, undefined, getContext)
     }

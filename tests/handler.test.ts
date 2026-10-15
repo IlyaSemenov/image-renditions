@@ -79,7 +79,7 @@ describe("failures", () => {
 
     const response = await get(
       createHandler(),
-      `/_renditions/v1/t/avatar.${hash}.avif/${target.path}`,
+      `/_renditions/v1/t/${target.path}/avatar.${hash}.avif`,
     )
 
     expect(response.status).toBe(404)
@@ -93,7 +93,7 @@ describe("failures", () => {
 
     const response = await get(
       createHandler({ onFailure }),
-      `/_renditions/v1/t/avatar.${"0".repeat(32)}.avif/${target.path}`,
+      `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(32)}.avif`,
     )
 
     expect(response.status).toBe(404)
@@ -110,7 +110,7 @@ describe("failures", () => {
       onFailure: failure => void failures.push(failure),
     })
 
-    await get(handler, `/_renditions/v1/t/avatar.${"0".repeat(12)}.avif/${target.path}`)
+    await get(handler, `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(12)}.avif`)
     await get(handler, "/_renditions/v1/malformed")
 
     expect(failures.map(({ reason, source }) => ({ reason, source }))).toEqual([
@@ -136,7 +136,7 @@ describe("failures", () => {
 
     const response = await get(
       handler,
-      `/_renditions/v1/t/avatar.${"0".repeat(12)}.avif/${target.path}`,
+      `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(12)}.avif`,
     )
 
     expect(response.status).toBe(302)
@@ -171,7 +171,7 @@ describe("failures", () => {
     const handler = createHandler()
     const url = catalog.url("avatar", target)
 
-    for (const path of [url.replace("/uploads/", "/../"), url.replace(".avif/", ".webp/")]) {
+    for (const path of [url.replace("/uploads/", "/../"), url.replace(/\.avif$/, ".webp")]) {
       const response = await get(handler, path)
       expect(response.status).toBe(404)
       expect(await response.text()).toBe("invalid-request")
@@ -213,7 +213,7 @@ describe("failures", () => {
 })
 
 describe("context", () => {
-  const malformed = catalog.url("avatar", target).replace(".avif/", ".webp/")
+  const malformed = catalog.url("avatar", target).replace(/\.avif$/, ".webp")
 
   test("is not resolved for a malformed url without a failure policy", async () => {
     const getContext = mock(() => tenant)
@@ -280,7 +280,7 @@ describe("catalog scopes", () => {
     expect((await get(handler, url)).status).toBe(307)
   })
 
-  test("rejects urls of other scopes or none before resolving their targets", async () => {
+  test("rejects urls of other scopes before resolving their targets, reading the scope from the first segment", async () => {
     const { handler, resolved, failures } = createScopedHandler()
 
     for (const path of [url.replace("/v1/t/", "/v1/x/"), url.replace("/v1/t/", "/v1/")]) {
@@ -291,16 +291,16 @@ describe("catalog scopes", () => {
 
     expect(resolved).toEqual([])
     expect(fakes.storageCalls()).toBe(0)
-    expect(failures.map(({ address, target }) => [address?.path, target])).toEqual([
-      [target.path, undefined],
-      [target.path, undefined],
+    expect(failures.map(({ address, target }) => [address?.scope, address?.path, target])).toEqual([
+      ["x", target.path, undefined],
+      ["uploads", "1/photo.jpg", undefined],
     ])
   })
 
   test("passes the target of a url with a declared scope to onFailure", async () => {
     const { handler, failures } = createScopedHandler()
 
-    await get(handler, url.replace(".avif/", ".webp/"))
+    await get(handler, url.replace(/\.avif$/, ".webp"))
 
     expect(failures[0]?.target).toEqual({ scope: "t", path: target.path })
   })

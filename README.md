@@ -8,10 +8,10 @@ Resize and re-encode uploaded images when a page first shows them, store each re
 
 ```html
 <img
-  src="/_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg"
+  src="/_renditions/v1/avatars/42.jpg/avatar.faf7e221f65d.avif"
   srcset="
-    /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg    1x,
-    /_renditions/v1/avatar@2x.b62b90cf6c3e.avif/avatars/42.jpg 2x
+    /_renditions/v1/avatars/42.jpg/avatar.faf7e221f65d.avif    1x,
+    /_renditions/v1/avatars/42.jpg/avatar@2x.b62b90cf6c3e.avif 2x
   "
   alt=""
 />
@@ -20,7 +20,7 @@ Resize and re-encode uploaded images when a page first shows them, store each re
 The handler redirects such a URL to the stored file:
 
 ```http
-GET /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg HTTP/1.1
+GET /_renditions/v1/avatars/42.jpg/avatar.faf7e221f65d.avif HTTP/1.1
 
 HTTP/1.1 307 Temporary Redirect
 Location: https://renditions.example.com/avatars/42.jpg/faf7e221f65d.avif
@@ -480,7 +480,7 @@ Build URLs in the app with the catalog, which is safe to import in browsers:
 
 ```ts
 catalog.url("avatar", { path: "avatars/42.jpg" })
-// /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg
+// /_renditions/v1/avatars/42.jpg/avatar.faf7e221f65d.avif
 
 catalog.srcset("avatar", { path: "avatars/42.jpg" })
 ```
@@ -518,9 +518,10 @@ It resolves to the key and public URL of the rendition after it is written or fo
 ## How a request is served
 
 ```text
-/_renditions/v1/[<scope>/]<preset>.<hash>.<extension>/<path>
+/_renditions/v1/[<scope>/]<path>/<preset>.<hash>.<extension>
 ```
 
+A URL has a scope exactly when the catalog declares scopes.
 The hash identifies the preset options at one density, and the preset name only labels the URL.
 The handler looks up the hash in the catalog, resolves the source, and then:
 
