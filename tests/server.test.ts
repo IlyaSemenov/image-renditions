@@ -3,10 +3,17 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { defineCatalog, type Recipe } from "image-renditions"
 import { type Processor, type RenditionDegradation, RenditionError } from "image-renditions/server"
 
-import { catalog, createDeferred, createFakes, type TestContext } from "./fakes"
+import {
+  catalog,
+  createDeferred,
+  createFakes,
+  presets,
+  type TestContext,
+  type TestScope,
+} from "./fakes"
 
 const tenant = { tenant: "acme" }
-const target = { scope: "t", path: "uploads/1/photo.jpg" }
+const target = { scope: "t", path: "uploads/1/photo.jpg" } as const
 const avatar = catalog.variant("avatar").recipe
 
 let fakes: ReturnType<typeof createFakes>
@@ -135,7 +142,7 @@ describe("ensure", () => {
         },
       },
     })
-    const other = { scope: "g", path: "uploads/1/photo.jpg" }
+    const other = { scope: "g", path: "uploads/1/photo.jpg" } as const
 
     const failures = await Promise.all(
       [target, target, other].map(item =>
@@ -156,9 +163,9 @@ describe("ensure", () => {
   })
 
   test("rejects targets the resolver does not serve and unsafe resolved keys", async () => {
-    const unknownScope = await fakes
-      .createServer()
-      .ensure(avatar, { scope: "x", path: target.path }, tenant)
+    const unserved = await fakes
+      .createServer({ resolveSource: () => undefined })
+      .ensure(avatar, target, tenant)
       .catch((error: unknown) => error)
     const unsafeKey = await fakes
       .createServer({
@@ -167,18 +174,21 @@ describe("ensure", () => {
       .ensure(avatar, target, tenant)
       .catch((error: unknown) => error)
 
-    expect((unknownScope as RenditionError).reason).toBe("invalid-request")
+    expect((unserved as RenditionError).reason).toBe("invalid-request")
     expect((unsafeKey as RenditionError).reason).toBe("invalid-request")
     // The keys are attached only once the resolver accepts them.
-    expect((unknownScope as RenditionError).source).toBeUndefined()
+    expect((unserved as RenditionError).source).toBeUndefined()
     expect((unsafeKey as RenditionError).source).toBeUndefined()
     expect(fakes.storageCalls()).toBe(0)
   })
 })
 
 describe("default source resolution", () => {
-  test("serves an unscoped path from the same key and stores renditions under it", async () => {
-    const server = fakes.createServer({ resolveSource: undefined })
+  test("serves a path of a catalog without scopes from the same key and stores renditions under it", async () => {
+    const server = fakes.createServer({
+      catalog: defineCatalog({ presets }),
+      resolveSource: undefined,
+    })
 
     const rendition = await server.ensure(avatar, { path: "uploads/1/photo.jpg" }, tenant)
     const scoped = await server.ensure(avatar, target, tenant).catch((error: unknown) => error)
@@ -294,7 +304,10 @@ describe("resolve", () => {
   })
 
   test("defaults the rendition prefix to the source key", async () => {
-    const server = fakes.createServer({ resolveSource: undefined })
+    const server = fakes.createServer({
+      catalog: defineCatalog({ presets }),
+      resolveSource: undefined,
+    })
 
     expect(await server.resolve({ path: "uploads/1/photo.jpg" }, tenant)).toEqual({
       sourceKey: "uploads/1/photo.jpg",
@@ -398,8 +411,9 @@ describe("degradation", () => {
   }
 
   test("is reported once, when the rendition is written", async () => {
-    const reported: RenditionDegradation<TestContext>[] = []
-    const onDegradation = (event: RenditionDegradation<TestContext>) => void reported.push(event)
+    const reported: RenditionDegradation<TestContext, TestScope>[] = []
+    const onDegradation = (event: RenditionDegradation<TestContext, TestScope>) =>
+      void reported.push(event)
     const server = fakes.createServer({ processor, onDegradation })
 
     const [rendition] = await Promise.all(
@@ -419,7 +433,7 @@ describe("degradation", () => {
   })
 
   test("is not reported when writing fails", async () => {
-    const reported: RenditionDegradation<TestContext>[] = []
+    const reported: RenditionDegradation<TestContext, TestScope>[] = []
     const server = fakes.createServer({
       processor,
       onDegradation: event => void reported.push(event),

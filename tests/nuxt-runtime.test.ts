@@ -8,6 +8,7 @@ mock.module("nuxt/app", () => ({ useRuntimeConfig: () => ({ app: { baseURL: "/ba
 const { createRenditionHelpers } = await import("image-renditions/nuxt/runtime")
 
 const catalog = defineCatalog({
+  scopes: ["t", "g"],
   presets: {
     avatar: { width: 48, height: 48, densities: [1, 2], enlarge: true },
     badge: { width: 48, height: 48, fit: "contain" },
@@ -18,7 +19,11 @@ const catalog = defineCatalog({
 })
 const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, { defaultScope: "t" })
 
-function render(props: { preset: (typeof catalog.presets)[number]; src: string; scope?: string }) {
+function render(props: {
+  preset: (typeof catalog.presets)[number]
+  src: string
+  scope?: "t" | "g"
+}) {
   return renderToString(createSSRApp({ render: () => h(RenditionImg, props) }))
 }
 
@@ -33,18 +38,22 @@ describe("useRenditions", () => {
     expect(url).toBe(`/base${catalog.url("avatar", { scope: "t", path: "uploads/1/a.jpg" }, 2)}`)
   })
 
-  test("builds unscoped URLs without a default scope", () => {
-    const unscoped = createRenditionHelpers(catalog)
+  test("builds URLs without a scope for a catalog without scopes", () => {
+    const unscopedCatalog = defineCatalog({ presets: { avatar: { width: 48 } } })
+    const unscoped = createRenditionHelpers(unscopedCatalog)
 
     const url = createSSRApp({}).runWithContext(() =>
       unscoped.useRenditions().url("avatar", "uploads/1/a.jpg"),
     )
 
-    expect(url).toBe(`/base${catalog.url("avatar", { path: "uploads/1/a.jpg" })}`)
+    expect(url).toBe(`/base${unscopedCatalog.url("avatar", { path: "uploads/1/a.jpg" })}`)
+    expect(() => createRenditionHelpers(unscopedCatalog, { defaultScope: "t" })).toThrow(
+      'Default rendition scope "t" in a catalog without scopes.',
+    )
   })
 
   test("lists every density in srcset", () => {
-    const target = { scope: "t", path: "uploads/1/a.jpg" }
+    const target = { scope: "t", path: "uploads/1/a.jpg" } as const
 
     const srcset = createSSRApp({}).runWithContext(() =>
       useRenditions().srcset("avatar", target.path),
@@ -56,7 +65,7 @@ describe("useRenditions", () => {
   })
 
   test("leaves the size out of the attributes on request, keeping the size of the element", async () => {
-    const target = { scope: "t", path: "uploads/1/a.jpg" }
+    const target = { scope: "t", path: "uploads/1/a.jpg" } as const
     const app = createSSRApp({
       render: () =>
         h("img", {
@@ -90,7 +99,7 @@ describe("useRenditions", () => {
 
 describe("RenditionImg", () => {
   test("renders every density and the size of a preset whose output always has the box size", async () => {
-    const target = { scope: "g", path: "uploads/1/a.jpg" }
+    const target = { scope: "g", path: "uploads/1/a.jpg" } as const
 
     expect(await render({ preset: "avatar", src: target.path, scope: target.scope })).toBe(
       `<img src="/base${catalog.url("avatar", target)}" srcset="/base${catalog.url("avatar", target)} 1x, /base${catalog.url("avatar", target, 2)} 2x" width="48" height="48">`,
@@ -101,7 +110,7 @@ describe("RenditionImg", () => {
   })
 
   test("renders the animated variants of a GIF source of a preset that preserves animation", async () => {
-    const target = { scope: "t", path: "uploads/1/a.gif" }
+    const target = { scope: "t", path: "uploads/1/a.gif" } as const
     const [single, double] = catalog.variants("clip", target.path)
 
     expect(await render({ preset: "clip", src: target.path })).toBe(
@@ -139,6 +148,7 @@ describe("RenditionImg", () => {
 
 describe("originals", () => {
   const logoCatalog = defineCatalog({
+    scopes: ["t", "g"],
     presets: {
       logo: { width: 32, height: 32, enlarge: true, densities: [1, 2], originals: ["svg"] },
     },
@@ -203,7 +213,9 @@ describe("originals", () => {
       const renditions = useRenditions()
       expect(renditions.url("logo", "brand/../logo.svg")).toBeUndefined()
       expect(renditions.attrs("logo", "brand/../logo.svg")).toEqual({})
+      // @ts-expect-error The scope is not declared.
       expect(() => renditions.url("logo", "logo.svg", { scope: "a/b" })).toThrow(RangeError)
+      // @ts-expect-error The scope is not declared.
       expect(() => renditions.attrs("logo", "logo.svg", { scope: "a/b" })).toThrow(RangeError)
       expect(() => renditions.url("logo", "logo.svg", { density: 3 })).toThrow(RangeError)
     })

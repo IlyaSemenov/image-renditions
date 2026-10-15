@@ -1,14 +1,14 @@
 import type { RenditionTarget } from "./catalog"
 
-/** Checks that a target has a scope the catalog declares; a catalog without scopes accepts any. */
+/** Checks that a target has a scope the catalog declares, or no scope when the catalog declares none. */
 export function isDeclaredScope(scopes: readonly string[] | undefined, scope: string | undefined) {
-  return !scopes || (scope !== undefined && scopes.includes(scope))
+  return scopes ? scope !== undefined && scopes.includes(scope) : scope === undefined
 }
 
 /**
- * Throws a `RangeError` unless a target has a scope the catalog declares.
+ * Throws a `RangeError` unless a target has a scope the catalog declares, or no scope when the catalog declares none.
  *
- * @throws {RangeError} When the scope is missing or not declared.
+ * @throws {RangeError} When the scope is missing, not declared, or given to a catalog without scopes.
  */
 export function assertDeclaredScope(
   scopes: readonly string[] | undefined,
@@ -16,7 +16,11 @@ export function assertDeclaredScope(
 ) {
   if (!isDeclaredScope(scopes, scope)) {
     throw new RangeError(
-      scope === undefined ? "Missing rendition scope." : `Undeclared rendition scope "${scope}".`,
+      scope === undefined
+        ? "Missing rendition scope."
+        : scopes
+          ? `Undeclared rendition scope "${scope}".`
+          : `Rendition scope "${scope}" in a catalog without scopes.`,
     )
   }
 }

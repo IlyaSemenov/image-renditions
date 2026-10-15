@@ -72,7 +72,9 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 
     if (defaultScope !== undefined && !isDeclaredScope(catalog.scopes, defaultScope)) {
       throw new Error(
-        `[image-renditions] The default scope "${defaultScope}" is not one of the catalog scopes.`,
+        catalog.scopes
+          ? `[image-renditions] The default scope "${defaultScope}" is not one of the catalog scopes.`
+          : `[image-renditions] The default scope "${defaultScope}" needs scopes in the catalog.`,
       )
     }
     if (!originalUrl && catalog.presets.some(preset => catalog.originals(preset).length > 0)) {

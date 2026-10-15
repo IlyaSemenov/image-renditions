@@ -12,12 +12,16 @@ export interface TestContext {
   tenant: string
 }
 
-export const catalog = defineCatalog({
-  presets: {
-    avatar: { width: 64, height: 64, densities: [1, 2] },
-    cover: { width: 800, height: 200 },
-  },
-})
+export const scopes = ["t", "g"] as const
+
+export type TestScope = (typeof scopes)[number]
+
+export const presets = {
+  avatar: { width: 64, height: 64, densities: [1, 2] },
+  cover: { width: 800, height: 200 },
+}
+
+export const catalog = defineCatalog({ scopes, presets })
 
 /** Maps the `t` scope to the context tenant and the `g` scope to global storage. */
 export function resolveSource(
@@ -69,12 +73,11 @@ export function createFakes() {
     },
     processor,
     resolveSource,
-  } satisfies RenditionServerOptions<TestContext>
+  } satisfies RenditionServerOptions<TestContext, TestScope>
 
-  function createServer<Scope extends string = string>(
+  function createServer<Scope extends string = TestScope>(
     overrides: Partial<RenditionServerOptions<TestContext, Scope>> = {},
   ) {
-    // The default catalog declares no scopes, so it serves as a catalog of any.
     return createRenditionServer<TestContext, Scope>({
       ...(options as unknown as RenditionServerOptions<TestContext, Scope>),
       ...overrides,

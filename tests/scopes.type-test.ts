@@ -32,11 +32,10 @@ export const undeclaredScopes = defineCatalog<"avatar", "tenant">({
   presets: { avatar: { width: 48 } },
 })
 
-// A catalog with scopes requires one of them in every target, and a catalog without them takes any or none.
+// A catalog with scopes requires one of them in every target, and a catalog without them takes a path alone.
 export const urls = [
   scoped.url("avatar", { scope: "tenant", path: "a.jpg" }),
   unscoped.url("avatar", { path: "a.jpg" }),
-  unscoped.url("avatar", { scope: "any", path: "a.jpg" }),
 ]
 
 // The catalog of the server types the targets its resolver receives.

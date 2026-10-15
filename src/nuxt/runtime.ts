@@ -103,7 +103,11 @@ export function createRenditionHelpers<Name extends string, Scope extends string
     )
   }
   if (defaultScope !== undefined && !isDeclaredScope(catalog.scopes, defaultScope)) {
-    throw new RangeError(`Undeclared default rendition scope "${defaultScope}".`)
+    throw new RangeError(
+      catalog.scopes
+        ? `Undeclared default rendition scope "${defaultScope}".`
+        : `Default rendition scope "${defaultScope}" in a catalog without scopes.`,
+    )
   }
   const renditionAttr = findRenditionAttr(imgAttrs)
   if (renditionAttr) {

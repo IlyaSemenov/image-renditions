@@ -8,10 +8,18 @@ import {
   type RenditionHandlerOptions,
 } from "image-renditions/server"
 
-import { catalog, createDeferred, createFakes, resolveSource, type TestContext } from "./fakes"
+import {
+  catalog,
+  createDeferred,
+  createFakes,
+  resolveSource,
+  scopes,
+  type TestContext,
+  type TestScope,
+} from "./fakes"
 
 const tenant = { tenant: "acme" }
-const target = { scope: "t", path: "uploads/1/photo.jpg" }
+const target = { scope: "t", path: "uploads/1/photo.jpg" } as const
 
 let fakes: ReturnType<typeof createFakes>
 
@@ -20,8 +28,11 @@ beforeEach(() => {
   fakes.sources.set("tenant/acme/uploads/1/photo.jpg", new Uint8Array([1]))
 })
 
-function createHandler(options: Partial<RenditionHandlerOptions<TestContext>> = {}) {
-  return createRenditionHandler<TestContext>({ server: fakes.createServer(), ...options })
+function createHandler(options: Partial<RenditionHandlerOptions<TestContext, TestScope>> = {}) {
+  return createRenditionHandler<TestContext, TestScope>({
+    server: fakes.createServer(),
+    ...options,
+  })
 }
 
 function get(handler: ReturnType<typeof createHandler>, path: string) {
@@ -49,7 +60,7 @@ describe("published renditions", () => {
     }
     const url = catalog.url("avatar", target)
     await get(createRenditionHandler({ server: fakes.createServer({ readiness }) }), url)
-    const changed = defineCatalog({ presets: { avatar: { width: 65, height: 65 } } })
+    const changed = defineCatalog({ scopes, presets: { avatar: { width: 65, height: 65 } } })
     const before = fakes.storageCalls()
 
     const response = await get(

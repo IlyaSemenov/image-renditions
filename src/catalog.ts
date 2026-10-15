@@ -53,7 +53,7 @@ export interface CatalogDefinition<Name extends string = string, Scope extends s
   /**
    * Scopes a logical path can belong to, such as `tenant`; every target then has one of them.
    *
-   * Without them, a target may have any scope or none.
+   * Without them, targets have no scope.
    */
   scopes?: readonly Scope[]
   presets: Record<Name, PresetDefinition>
@@ -76,14 +76,14 @@ export interface RenditionVariant {
 /**
  * Source a rendition is made from.
  *
- * `Scope` is the union of the scopes a catalog declares, which makes `scope` required, or `string` for a catalog without them.
+ * `Scope` is the union of the scopes a catalog declares, which makes `scope` required, or `string` for a catalog without them or with scopes typed as `string`.
  */
 export type RenditionTarget<Scope extends string = string> = {
   /** Logical source path inside the scope. */
   path: string
 } & (string extends Scope
   ? {
-      /** Application-defined space of the path, such as a tenant; omitted when the application has one space. */
+      /** Application-defined space of the path, such as a tenant; required when the catalog declares scopes, and omitted otherwise. */
       scope?: string
     }
   : {

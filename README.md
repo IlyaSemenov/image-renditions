@@ -247,7 +247,7 @@ export default defineRenditionEventHandler({
 - The handler calls `getContext` at most once per request.
   It skips the call for a method other than `GET` and `HEAD`, and, unless `onFailure` is set, for a malformed URL or a scope the catalog does not declare.
 - If `resolveSource` returns `undefined`, the request fails with `404`.
-- Without scopes in the catalog, `resolveSource` receives any scope a URL has, or none, and rejects the ones it does not serve.
+- Without scopes in the catalog, targets have no scope, and the server rejects a target with one as `invalid-request`.
 - Map different scopes to different keys even for equal paths.
 - To define `resolveSource` apart from the server, for example to test it, type it as `SourceResolver<Context, ScopeName<typeof catalog>>` from `image-renditions/server`.
 - A rendition is stored in the result store at `<sourceKey>/<hash>.<extension>`.
@@ -259,7 +259,7 @@ export default defineRenditionEventHandler({
 Derive the context from the URL only, host included, for example from the tenant's domain: browsers and CDNs cache the redirect to a rendition by its URL for a day.
 If the context depends on cookies or a session, pass `redirectCacheControl: "no-store"` to `defineRenditionEventHandler()`, or one tenant may get the rendition of another.
 
-With the Nuxt module, `defaultScope: "tenant"` makes `tenant` the scope of every image, and `scope` selects another one; the build fails when the catalog declares scopes without the default one:
+With the Nuxt module, `defaultScope: "tenant"` makes `tenant` the scope of every image, and `scope` selects another one; the build fails unless the catalog declares the default scope:
 
 ```vue
 <RenditionImg preset="cover" :src="template.coverPath" scope="shared" alt="" />
@@ -482,7 +482,7 @@ Build URLs in the app with the catalog, which is safe to import in browsers:
 catalog.url("avatar", { path: "avatars/42.jpg" })
 // /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg
 
-catalog.srcset("avatar", { scope: "tenant", path: "avatars/42.jpg" })
+catalog.srcset("avatar", { path: "avatars/42.jpg" })
 ```
 
 They throw a `RangeError` for an unsafe path; check stored paths with `isSafePath()` first.

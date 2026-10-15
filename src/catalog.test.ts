@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { defineCatalog } from "./catalog"
 import { parseRenditionPath } from "./url"
 
-const target = { scope: "tenant", path: "uploads/1/photo.jpg" }
+const target = { path: "uploads/1/photo.jpg" }
 
 describe("recipe identity", () => {
   it("keeps hashes when a preset is renamed", () => {
@@ -116,7 +116,12 @@ describe("densities", () => {
 })
 
 describe("urls", () => {
-  const catalog = defineCatalog({ basePath: "/img", presets: { avatar: { width: 64 } } })
+  const catalog = defineCatalog({
+    basePath: "/img",
+    scopes: ["tenant", "global", "s"],
+    presets: { avatar: { width: 64 } },
+  })
+  const unscoped = defineCatalog({ basePath: "/img", presets: { avatar: { width: 64 } } })
 
   it("round-trips the scope, variant and source path", () => {
     const path = "uploads/1/фото #1?.jpg"
@@ -131,13 +136,13 @@ describe("urls", () => {
     })
   })
 
-  it("omits the scope of an unscoped path", () => {
-    const url = catalog.url("avatar", { path: "uploads/1/photo.jpg" })
+  it("omits the scope in a catalog without scopes", () => {
+    const url = unscoped.url("avatar", { path: "uploads/1/photo.jpg" })
 
-    expect(url).toBe(`/img/v1/avatar.${catalog.variant("avatar").hash}.avif/uploads/1/photo.jpg`)
+    expect(url).toBe(`/img/v1/avatar.${unscoped.variant("avatar").hash}.avif/uploads/1/photo.jpg`)
     expect(parseRenditionPath("/img", url)).toEqual({
       label: "avatar",
-      hash: catalog.variant("avatar").hash,
+      hash: unscoped.variant("avatar").hash,
       format: "avif",
       path: "uploads/1/photo.jpg",
     })
@@ -201,7 +206,7 @@ describe("urls", () => {
   })
 
   it("ignores the query string", () => {
-    const url = catalog.url("avatar", target)
+    const url = unscoped.url("avatar", target)
 
     expect(parseRenditionPath("/img", `${url}?v=1`)?.path).toBe(target.path)
   })
@@ -224,6 +229,14 @@ describe("scopes", () => {
     expect(() => catalog.url("avatar", { path: "a.jpg" })).toThrow(RangeError)
     // @ts-expect-error The scope is not declared.
     expect(() => catalog.srcset("avatar", { scope: "other", path: "a.jpg" })).toThrow(RangeError)
+  })
+
+  it("rejects a scope in a catalog without scopes", () => {
+    const unscoped = defineCatalog({ presets: { avatar: { width: 64 } } })
+
+    expect(() => unscoped.url("avatar", { scope: "global", path: "a.jpg" })).toThrow(
+      'Rendition scope "global" in a catalog without scopes.',
+    )
   })
 })
 
