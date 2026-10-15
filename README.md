@@ -556,8 +556,8 @@ On a public site, rate-limit requests per client at the CDN or reverse proxy.
 
 ## Sharing state between replicas
 
-Each process keeps its own state: it remembers the renditions it has published, and renders a rendition once for its concurrent requests.
-With several replicas, `image-renditions/redis` shares this state through Redis:
+Each process remembers the renditions it has published, and renders a rendition once for its concurrent requests.
+With several replicas, `image-renditions/redis` shares both between them through Redis:
 
 - The readiness index lets a replica redirect to a rendition that another replica published, without checking storage.
 - The coordinator lets one replica render a rendition while the others wait for it.
