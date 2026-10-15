@@ -224,4 +224,61 @@ describe("results", () => {
       "invalid-request",
     ])
   })
+
+  describe("prefix", () => {
+    test("keeps objects and their URLs under the prefix", async () => {
+      const headObject = mock(async () => ({}))
+      const putObject = mock(async () => ({}))
+      const results = createS3Results({
+        bucket: "b",
+        publicUrl: "https://storage.test/b",
+        prefix: "ф/renditions",
+        client: createClient({ headObject, putObject }),
+      })
+
+      expect(await results.exists("k.avif", { signal })).toBe(true)
+      await results.write(
+        "k.avif",
+        { data: new Uint8Array([1]), contentType: "image/avif" },
+        { signal },
+      )
+
+      expect(headObject).toHaveBeenCalledWith(
+        { Bucket: "b", Key: "ф/renditions/k.avif" },
+        { abortSignal: signal },
+      )
+      expect(putObject).toHaveBeenCalledWith(
+        expect.objectContaining({ Key: "ф/renditions/k.avif" }),
+        { abortSignal: signal },
+      )
+      expect(results.url("a b.avif")).toBe("https://storage.test/b/%D1%84/renditions/a%20b.avif")
+    })
+
+    test("counts the prefix and its slash toward the S3 limit", async () => {
+      const results = createS3Results({
+        bucket: "b",
+        publicUrl: "https://storage.test/b",
+        // A Cyrillic letter takes two bytes, so with the slash the prefix takes three.
+        prefix: "ф",
+        client: createClient({ headObject: async () => ({}) }),
+      })
+
+      expect(await results.exists("a".repeat(1021), { signal })).toBe(true)
+      const failure = await results.exists("a".repeat(1022), { signal }).catch(error => error)
+      expect((failure as RenditionError).reason).toBe("invalid-request")
+    })
+
+    test("rejects a prefix that is not a valid key", () => {
+      for (const prefix of ["", "/renditions", "renditions/", "a//b", "a/../b"]) {
+        expect(() =>
+          createS3Results({
+            bucket: "b",
+            publicUrl: "https://s.test",
+            prefix,
+            client: createClient({}),
+          }),
+        ).toThrow(`Invalid S3 key prefix "${prefix}".`)
+      }
+    })
+  })
 })

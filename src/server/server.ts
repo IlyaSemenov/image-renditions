@@ -21,9 +21,9 @@ export interface SourceResolution {
   /** Key of the source object in the source store. */
   sourceKey: string
   /**
-   * Key prefix of every rendition of the source; a rendition is stored at `<renditionPrefix>/<hash>.<extension>`.
+   * Key prefix of every rendition of the source in the result store; a rendition is stored at `<renditionPrefix>/<hash>.<extension>`.
    *
-   * Defaults to `sourceKey`, which suits a result store separate from the source store.
+   * Defaults to `sourceKey`, which suits a result store separate from the source store, such as another bucket or the `prefix` folder of `createS3Results()`.
    * Different sources must have different prefixes, and in a store shared with sources the prefixes must stay apart from source keys, such as under `renditions/`.
    */
   renditionPrefix?: string
@@ -105,7 +105,7 @@ export interface RenditionDegradation<Context, Scope extends string = string> ex
 
 /** Published rendition. */
 export interface Rendition {
-  /** Key in the result store. */
+  /** Key in the result store, which may keep it under a prefix of its own, such as the `prefix` of `createS3Results()`. */
   key: string
   /** Public URL. */
   url: string

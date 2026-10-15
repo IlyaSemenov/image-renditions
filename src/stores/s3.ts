@@ -5,7 +5,7 @@ import {
   type S3Client,
 } from "@aws-sdk/client-s3"
 
-import { encodePath } from "../path"
+import { encodePath, isSafePath } from "../path"
 import { RenditionError } from "../server/error"
 import type { ResultStore, SourceStore } from "../server/stores"
 
@@ -30,6 +30,12 @@ export interface S3ResultsOptions {
   bucket: string
   /** Public URL of the bucket root, such as `https://storage.example.com/bucket`; objects must be publicly readable. */
   publicUrl: string
+  /**
+   * Folder of the bucket that holds the renditions, such as `renditions`.
+   *
+   * It lets renditions share a bucket with sources when no source key starts with it.
+   */
+  prefix?: string
   /** `Cache-Control` stored with each rendition; renditions never change, so they are immutable for a year by default. */
   cacheControl?: string
 }
@@ -89,27 +95,38 @@ export function createS3Source({
   }
 }
 
-/** Creates a result store writing objects to an S3 bucket that serves them publicly. */
+/**
+ * Creates a result store writing objects to an S3 bucket that serves them publicly.
+ *
+ * @throws {RangeError} When `prefix` is not a valid key, such as one with a leading or trailing slash.
+ */
 export function createS3Results({
   client,
   bucket,
   publicUrl,
+  prefix,
   cacheControl = "public, max-age=31536000, immutable",
 }: S3ResultsOptions): ResultStore {
+  if (prefix !== undefined && !isSafePath(prefix)) {
+    throw new RangeError(`Invalid S3 key prefix "${prefix}".`)
+  }
+  const toObjectKey = (key: string) => (prefix === undefined ? key : `${prefix}/${key}`)
   return {
     async exists(key, { signal }) {
-      assertKeyLimit(key)
+      const objectKey = toObjectKey(key)
+      assertKeyLimit(objectKey)
       const output = await client
-        .send(new HeadObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal })
+        .send(new HeadObjectCommand({ Bucket: bucket, Key: objectKey }), { abortSignal: signal })
         .catch(ignoreNotFound)
       return output !== undefined
     },
     async write(key, { data, contentType }, { signal }) {
-      assertKeyLimit(key)
+      const objectKey = toObjectKey(key)
+      assertKeyLimit(objectKey)
       await client.send(
         new PutObjectCommand({
           Bucket: bucket,
-          Key: key,
+          Key: objectKey,
           Body: data,
           ContentType: contentType,
           CacheControl: cacheControl,
@@ -117,7 +134,7 @@ export function createS3Results({
         { abortSignal: signal },
       )
     },
-    url: key => `${publicUrl.replace(/\/$/, "")}/${encodePath(key)}`,
+    url: key => `${publicUrl.replace(/\/$/, "")}/${encodePath(toObjectKey(key))}`,
   }
 }
 
