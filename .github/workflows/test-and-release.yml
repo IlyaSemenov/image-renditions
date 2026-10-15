@@ -21,6 +21,18 @@ jobs:
     name: Test and Release
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: redis
+        # Wait until Redis is ready before test steps run.
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -41,10 +53,6 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      # for the Redis tests
-      - name: Install Redis
-        run: sudo apt-get install -y redis-server
-
       - name: Build package
         run: bun run build
 
@@ -52,6 +60,8 @@ jobs:
         run: bun run types
 
       - name: Test package
+        env:
+          REDIS_URL: redis://localhost:6379
         run: bun run test
 
       - name: Test Nuxt module

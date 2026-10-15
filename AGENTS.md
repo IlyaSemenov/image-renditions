@@ -80,6 +80,6 @@ Describe the user-visible change.
 
 - Run the `types` script when public types or TypeScript configuration change.
 - Run the `test` script when behavior changes.
-  It needs `redis-server` on `PATH`; the Redis tests start their own instance.
+  The Redis tests use the Redis at `REDIS_URL` and wipe its database; without `REDIS_URL` they start their own `redis-server`, which must be on `PATH`.
 - Run the `build` script when package exports, declarations, or supported runtimes change.
 - Run the `test:nuxt` script when the Nuxt module, its runtime, or the package entries it imports change; it builds the package and a Nuxt fixture app.

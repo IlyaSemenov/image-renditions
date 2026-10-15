@@ -3,12 +3,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 
 import { createRedisCoordinator, createRedisReadinessIndex, type RedisSendCommand } from "./redis"
 
-// The tests run against a disposable `redis-server` on a free port.
-let server: Subprocess
+// The tests run against the Redis at `REDIS_URL`, wiping its database, or else against a disposable `redis-server` on a free port.
+let server: Subprocess | undefined
 let client: RedisClient
 let sendCommand: RedisSendCommand
 
 beforeAll(async () => {
+  client = new RedisClient(process.env.REDIS_URL || startServer(), { autoReconnect: false })
+  sendCommand = ([command, ...args]) => client.send(command!, args)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await client.connect()
+      break
+    } catch (error) {
+      if (attempt === 50) {
+        throw error
+      }
+      await Bun.sleep(20)
+    }
+  }
+})
+
+/** Starts a disposable `redis-server` on a free port and returns its URL. */
+function startServer() {
   const probe = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } })
   const { port } = probe
   probe.stop(true)
@@ -26,20 +43,8 @@ beforeAll(async () => {
     ],
     { stdout: "ignore", stderr: "inherit" },
   )
-  client = new RedisClient(`redis://127.0.0.1:${port}`, { autoReconnect: false })
-  sendCommand = ([command, ...args]) => client.send(command!, args)
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await client.connect()
-      break
-    } catch (error) {
-      if (attempt === 50) {
-        throw error
-      }
-      await Bun.sleep(20)
-    }
-  }
-})
+  return `redis://127.0.0.1:${port}`
+}
 
 afterAll(() => {
   client?.close()
@@ -47,7 +52,7 @@ afterAll(() => {
 })
 
 beforeEach(async () => {
-  await client.send("FLUSHALL", [])
+  await client.send("FLUSHDB", [])
 })
 
 /** Creates a promise with its resolver exposed. */
