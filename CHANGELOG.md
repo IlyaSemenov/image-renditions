@@ -1,5 +1,11 @@
 # image-renditions
 
+## 0.9.0
+
+### Minor Changes
+
+- 24d80fa: Add `image-renditions/redis` with a readiness index and a coordinator that share state between replicas through Redis with any client library.
+
 ## 0.8.0
 
 ### Minor Changes
