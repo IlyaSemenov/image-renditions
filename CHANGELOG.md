@@ -1,5 +1,14 @@
 # image-renditions
 
+## 0.8.0
+
+### Minor Changes
+
+- e361e82: Put the source path before the variant in rendition URLs, such as `/_renditions/v1/avatars/42.jpg/avatar.faf7e221f65d.avif`, and pass the catalog to `parseRenditionPath()` and `formatRenditionPath()`.
+- 59b27e8: Rename `resultPrefix` returned by `resolveSource` to `renditionPrefix`.
+- fa34cf7: Add the `prefix` option to `createS3Results()` to keep renditions in a folder of a bucket.
+- 795bbb7: Reject a scope in targets of a catalog that declares no scopes.
+
 ## 0.7.0
 
 ### Minor Changes
