@@ -107,7 +107,7 @@ describe("failures", () => {
         reason: "unknown-recipe",
         source: {
           sourceKey: "tenant/acme/uploads/1/photo.jpg",
-          resultPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
+          renditionPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
         },
       },
       { reason: "invalid-request", source: undefined },

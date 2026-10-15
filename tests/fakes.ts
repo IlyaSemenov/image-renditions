@@ -27,7 +27,7 @@ export function resolveSource(
   const prefix = scope === "t" ? `tenant/${tenant}/` : scope === "g" ? "" : undefined
   return prefix === undefined
     ? undefined
-    : { sourceKey: `${prefix}${path}`, resultPrefix: `${prefix}derived/${path}` }
+    : { sourceKey: `${prefix}${path}`, renditionPrefix: `${prefix}derived/${path}` }
 }
 
 /** Creates in-memory stores and a processor that count their calls. */

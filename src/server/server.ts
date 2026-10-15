@@ -21,12 +21,12 @@ export interface SourceResolution {
   /** Key of the source object in the source store. */
   sourceKey: string
   /**
-   * Key prefix of every rendition of the source; a rendition is stored at `<resultPrefix>/<hash>.<extension>`.
+   * Key prefix of every rendition of the source; a rendition is stored at `<renditionPrefix>/<hash>.<extension>`.
    *
    * Defaults to `sourceKey`, which suits a result store separate from the source store.
    * Different sources must have different prefixes, and in a store shared with sources the prefixes must stay apart from source keys, such as under `renditions/`.
    */
-  resultPrefix?: string
+  renditionPrefix?: string
 }
 
 /**
@@ -146,7 +146,7 @@ export interface RenditionServer<Context, Scope extends string = string> {
     context: Context,
   ) => Promise<PublishedLookup>
   /**
-   * Storage locations of a target as `ensure()` uses them, with `resultPrefix` defaulting to `sourceKey`.
+   * Storage locations of a target as `ensure()` uses them, with `renditionPrefix` defaulting to `sourceKey`.
    *
    * It checks that the catalog declares the scope, calls `resolveSource` and checks that the keys are safe, but does not check that the source exists.
    * Full rendition keys and the limits of a store are checked only when a rendition is located or stored.
@@ -221,22 +221,22 @@ export function createRenditionServer<Context, Scope extends string = string>(
       throw new RenditionError("invalid-request", `The target ${describe(target)} is not served.`)
     }
     const { sourceKey } = resolution
-    const resultPrefix = resolution.resultPrefix ?? sourceKey
+    const renditionPrefix = resolution.renditionPrefix ?? sourceKey
     // Keys come from application code, so they are checked like client input to keep storage paths unambiguous.
-    if (!isSafePath(sourceKey) || !isSafePath(resultPrefix)) {
+    if (!isSafePath(sourceKey) || !isSafePath(renditionPrefix)) {
       throw createUnsafeKeyError(target)
     }
     // Frozen, as failures of every later step carry it.
-    return Object.freeze({ sourceKey, resultPrefix })
+    return Object.freeze({ sourceKey, renditionPrefix })
   }
 
   function locate(
-    { resultPrefix }: Required<SourceResolution>,
+    { renditionPrefix }: Required<SourceResolution>,
     hash: string,
     format: RenditionFormat,
     target: RenditionTarget<Scope>,
   ): Rendition {
-    const key = `${resultPrefix}/${hash}.${formatExtensions[format]}`
+    const key = `${renditionPrefix}/${hash}.${formatExtensions[format]}`
     // A safe prefix can still make the full key too long.
     if (!isSafePath(key)) {
       throw createUnsafeKeyError(target)

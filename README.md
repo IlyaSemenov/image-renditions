@@ -242,9 +242,9 @@ export default defineRenditionEventHandler({
 - Map different scopes to different keys even for equal paths.
 - To define `resolveSource` apart from the server, for example to test it, type it as `SourceResolver<Context, ScopeName<typeof catalog>>` from `image-renditions/server`.
 - A rendition is stored in the result store at `<sourceKey>/<hash>.<extension>`.
-  To keep renditions in the bucket of uploads, also return a `resultPrefix` that no source key starts with, such as `` `renditions/${sourceKey}` ``, to use instead of `sourceKey`.
-- S3 limits a key to 1024 bytes in UTF-8, and the library writes a rendition under a key up to 18 bytes longer than its result prefix.
-  If source keys can come that close to the limit, return a shorter `resultPrefix`, or their renditions fail as `invalid-request`.
+  To keep renditions in the bucket of uploads, also return a `renditionPrefix` that no source key starts with, such as `` `renditions/${sourceKey}` ``, to use instead of `sourceKey`.
+- S3 limits a key to 1024 bytes in UTF-8, and the library writes a rendition under a key up to 18 bytes longer than its rendition prefix.
+  If source keys can come that close to the limit, return a shorter `renditionPrefix`, or their renditions fail as `invalid-request`.
 
 Derive the context from the URL only, host included, for example from the tenant's domain: browsers and CDNs cache the redirect to a rendition by its URL for a day.
 If the context depends on cookies or a session, pass `redirectCacheControl: "no-store"` to `defineRenditionEventHandler()`, or one tenant may get the rendition of another.
@@ -608,7 +608,7 @@ The built-in stores and processor implement the same interfaces and serve as exa
   Keep private images out of what `resolveSource` maps, for example by serving only the folders of public images.
 - A source must never change under its key: renditions of a replaced source keep showing the old image.
   Store new content under a new key.
-- Deleting a source leaves its renditions in storage under its result prefix, which `server.resolve()` returns.
+- Deleting a source leaves its renditions in storage under its rendition prefix, which `server.resolve()` returns.
 - A rendition of an animated source shows its first frame unless the preset sets [`animation: "preserve"`](#animation), a rendition of an SVG source is rasterized at the target size, and EXIF orientation is applied.
   A preset shows such sources as they are when it lists their extensions in [`originals`](#originals).
 - Source paths are limited to 1024 characters.

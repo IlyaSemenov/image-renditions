@@ -18,7 +18,7 @@ beforeEach(() => {
 })
 
 describe("ensure", () => {
-  test("publishes a rendition under the source's result prefix", async () => {
+  test("publishes a rendition under the source's rendition prefix", async () => {
     const server = fakes.createServer()
 
     const rendition = await server.ensure(avatar, target, tenant)
@@ -120,7 +120,7 @@ describe("ensure", () => {
     expect((failure as RenditionError).reason).toBe("source-not-found")
     expect((failure as RenditionError).source).toEqual({
       sourceKey: "tenant/acme/uploads/2/missing.jpg",
-      resultPrefix: "tenant/acme/derived/uploads/2/missing.jpg",
+      renditionPrefix: "tenant/acme/derived/uploads/2/missing.jpg",
     })
     expect(fakes.calls.write).toBe(0)
   })
@@ -161,7 +161,9 @@ describe("ensure", () => {
       .ensure(avatar, { scope: "x", path: target.path }, tenant)
       .catch((error: unknown) => error)
     const unsafeKey = await fakes
-      .createServer({ resolveSource: () => ({ sourceKey: "a/../b", resultPrefix: "derived/a" }) })
+      .createServer({
+        resolveSource: () => ({ sourceKey: "a/../b", renditionPrefix: "derived/a" }),
+      })
       .ensure(avatar, target, tenant)
       .catch((error: unknown) => error)
 
@@ -286,17 +288,17 @@ describe("resolve", () => {
 
     expect(await server.resolve(target, tenant)).toEqual({
       sourceKey: "tenant/acme/uploads/1/photo.jpg",
-      resultPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
+      renditionPrefix: "tenant/acme/derived/uploads/1/photo.jpg",
     })
     expect(fakes.storageCalls()).toBe(0)
   })
 
-  test("defaults the result prefix to the source key", async () => {
+  test("defaults the rendition prefix to the source key", async () => {
     const server = fakes.createServer({ resolveSource: undefined })
 
     expect(await server.resolve({ path: "uploads/1/photo.jpg" }, tenant)).toEqual({
       sourceKey: "uploads/1/photo.jpg",
-      resultPrefix: "uploads/1/photo.jpg",
+      renditionPrefix: "uploads/1/photo.jpg",
     })
   })
 
@@ -323,7 +325,7 @@ describe("resolve", () => {
     const resolutions = [
       undefined,
       { sourceKey: "a/../b" },
-      { sourceKey: "uploads/1/photo.jpg", resultPrefix: "derived/" },
+      { sourceKey: "uploads/1/photo.jpg", renditionPrefix: "derived/" },
     ]
     for (const resolution of resolutions) {
       const error = await fakes
