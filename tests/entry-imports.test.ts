@@ -39,6 +39,10 @@ test("the server imports no storage or image library", () => {
   ])
 })
 
+test("the Redis entry imports no Redis client", () => {
+  expect(collectPackageImports("../src/redis/index.ts")).toEqual([])
+})
+
 test("the Nuxt runtime imports no server code", () => {
   expect(collectPackageImports("../src/nuxt/runtime.ts").toSorted()).toEqual(["nuxt/app", "vue"])
 })

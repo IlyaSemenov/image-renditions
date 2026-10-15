@@ -41,6 +41,10 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      # for the Redis tests
+      - name: Install Redis
+        run: sudo apt-get install -y redis-server
+
       - name: Build package
         run: bun run build
 

@@ -25,7 +25,9 @@ Do not catalog files or restate information evident from their names and locatio
 - Import `h3` only in `src/h3.ts`, `sharp` only in `src/processors/sharp/`, `@aws-sdk/client-s3` only in `src/stores/s3.ts`, and `nuxt`, `vue` and `jiti` only in `src/nuxt/`; these packages are optional peers or Nuxt-only dependencies.
 - Keep `jiti` a regular dependency: the Nuxt module must resolve it from this package under isolated installs.
 - Keep `src/server/` independent of storage, processor and framework; it owns the store and processor contracts.
+- Keep `src/redis/` free of Redis client libraries: it reaches Redis only through the `sendCommand` function the application passes.
 - Put each store implementation in `src/stores/` and each processor in `src/processors/`, and ship each as its own entry; `tests/entry-imports.test.ts` checks that the server imports no such library.
+- Put an integration that implements several contracts, such as `src/redis/`, at the top level of `src/` rather than in a folder of one contract, and ship it as one entry.
 - Keep the h3 adapter working with h3 v1 and v2: `tests/h3.test.ts` runs it on both, and `tests/h3-v1/` typechecks it against h3 v1.
 - Any change to recipe normalization or serialization changes hashes and regenerates every stored rendition; make it only deliberately.
 - Bump `RECIPE_ENGINE_VERSION` when processing of an unchanged recipe changes its output.
@@ -78,5 +80,6 @@ Describe the user-visible change.
 
 - Run the `types` script when public types or TypeScript configuration change.
 - Run the `test` script when behavior changes.
+  It needs `redis-server` on `PATH`; the Redis tests start their own instance.
 - Run the `build` script when package exports, declarations, or supported runtimes change.
 - Run the `test:nuxt` script when the Nuxt module, its runtime, or the package entries it imports change; it builds the package and a Nuxt fixture app.

@@ -22,6 +22,7 @@
     "./h3": "./dist/h3.mjs",
     "./nuxt": "./dist/nuxt.mjs",
     "./nuxt/runtime": "./dist/nuxt/runtime.mjs",
+    "./redis": "./dist/redis.mjs",
     "./s3": "./dist/s3.mjs",
     "./server": "./dist/server.mjs",
     "./sharp": "./dist/sharp.mjs",

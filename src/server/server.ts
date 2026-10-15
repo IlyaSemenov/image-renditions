@@ -1,4 +1,4 @@
-import { assertInteger } from "../assert"
+import { assertInteger, MAX_TIMEOUT } from "../assert"
 import type { Catalog, RenditionTarget } from "../catalog"
 import { hashRecipe } from "../hash"
 import { isSafePath } from "../path"
@@ -8,6 +8,7 @@ import { isDeclaredScope } from "../scopes"
 import { type Coordinator, createLocalCoordinator } from "./coordinator"
 import { RenditionError } from "./error"
 import { createLimiter } from "./limiter"
+import { notify } from "./notify"
 import type { Degradation, Processor } from "./processor"
 import {
   createMemoryReadinessIndex,
@@ -158,9 +159,6 @@ export interface RenditionServer<Context, Scope extends string = string> {
     context: Context,
   ) => Promise<Readonly<Required<SourceResolution>>>
 }
-
-/** Longest delay of Node timers, in milliseconds. */
-const MAX_TIMEOUT = 2 ** 31 - 1
 
 /**
  * Creates a rendition server over source and result stores.
@@ -373,16 +371,6 @@ function attachSource(error: unknown, source: Readonly<Required<SourceResolution
   return error instanceof RenditionError
     ? new RenditionError(error.reason, error.message, { cause: error, source })
     : error
-}
-
-/** Calls an optional callback without waiting for it, so a failing or hanging callback cannot affect the operation. */
-function notify<T>(callback: ((value: T) => void) | undefined, value: T) {
-  try {
-    // The callback is typed as synchronous, but an async one returns a promise whose rejection must not go unhandled.
-    Promise.resolve(callback?.(value)).catch(() => {})
-  } catch {
-    // A throwing callback is ignored like a rejecting one.
-  }
 }
 
 /**

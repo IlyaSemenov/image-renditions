@@ -38,6 +38,7 @@ The library is modular, with pluggable parts:
 - [Processing](#processing): a processor built on sharp.
 - [Storage](#storage): an S3 bucket or a file system directory for uploads, with renditions in another one, in a [folder of their own](#s3-storage), or [next to each upload](#scopes).
 - [Nuxt](#quick-start): a Nuxt 4 module that registers the handler and the `<RenditionImg>` component.
+- [Replicas](#sharing-state-between-replicas): a readiness index and a lock shared between replicas through Redis.
 - [Extending](#extending): other storage, image libraries, and state shared between replicas plug in through the interfaces of `image-renditions/server`.
 
 ## When not to use it
@@ -530,7 +531,7 @@ The handler looks up the hash in the catalog, resolves the source, and then:
 3. Otherwise it reads the source, renders it, writes the result, and redirects.
 
 Within a process, equal concurrent requests are rendered once.
-Replicas without a shared `coordinator` may each render the same rendition and write equal files under its key.
+Replicas without a shared [`coordinator`](#sharing-state-between-replicas) may each render the same rendition and write equal files under its key.
 
 The redirect is a `307` with `Cache-Control: public, max-age=86400`, so browsers and CDNs remember it for a day.
 It points to the storage URL built from `publicUrl`, and a cached redirect cannot be revoked: after you move renditions to another domain, clients follow the old redirects until they expire.
@@ -552,6 +553,62 @@ Processing itself has no timeout, because a timeout could not stop the processor
 These limits bound image processing, not HTTP request rates.
 Requests for renditions missing from the readiness indexes check result storage, even when the source does not exist.
 On a public site, rate-limit requests per client at the CDN or reverse proxy.
+
+## Sharing state between replicas
+
+Each process keeps its own state: it remembers the renditions it has published, and renders a rendition once for its concurrent requests.
+With several replicas, `image-renditions/redis` shares this state through Redis:
+
+- The readiness index lets a replica redirect to a rendition that another replica published, without checking storage.
+- The coordinator lets one replica render a rendition while the others wait for it.
+
+Create a `sendCommand` callback for your Redis or Valkey client:
+
+```ts
+// node-redis: createClient()
+const sendCommand = (args: string[]) => redis.sendCommand(args)
+
+// node-redis: createSentinel()
+const sendCommand = (args: string[]) => sentinel.sendCommand(false, args)
+
+// node-redis: createCluster()
+const sendCommand = (args: string[], key: string) => cluster.sendCommand(key, false, args)
+
+// ioredis or iovalkey: Redis or Cluster, including Sentinel connections
+const sendCommand = ([command, ...args]: string[]) => redis.call(command!, args)
+
+// Bun: RedisClient
+const sendCommand = ([command, ...args]: string[]) => redis.send(command!, args)
+```
+
+Pass it to `createRedisReadinessIndex()` and `createRedisCoordinator()`:
+
+```ts
+// server/renditions.ts
+import { createRedisCoordinator, createRedisReadinessIndex } from "image-renditions/redis"
+
+const server = createRenditionServer({
+  // catalog, stores and processor as in the quick start
+  readiness: { shared: createRedisReadinessIndex({ sendCommand }) },
+  coordinator: createRedisCoordinator({ sendCommand, onError: reportError }),
+})
+```
+
+The readiness index forgets a rendition 30 days after it last added or found it, even if the rendition is still requested; pass `ttl` in milliseconds to change it.
+A forgotten rendition costs one storage check while its recipe is in the catalog; after the recipe is removed, its [outdated URL](#outdated-urls) fails as `unknown-recipe`.
+When the index fails or exceeds `limits.indexTimeout`, the server reports the error to its `onError` and checks storage instead.
+
+The coordinator holds a lock in Redis while one replica renders a rendition, and other replicas wait for it to finish:
+
+- `lockTtl` — milliseconds a lock outlives a replica that stopped renewing it, such as a crashed one, 30 seconds by default.
+- `waitTimeout` — milliseconds a replica waits for the lock before it renders the rendition anyway, 30 seconds by default.
+- `commandTimeout` — milliseconds Redis may take to reply to an attempt to take the lock, 1 second by default.
+  A replica may wait this long even when `waitTimeout` is shorter.
+
+The lock only saves work: when Redis fails or does not reply in time, the coordinator reports the error to `onError` and renders without the lock.
+If a lock is lost, for example on a Sentinel failover, the worst case is that two replicas render the same rendition.
+
+Keys start with `image-renditions:`; pass `prefix` to the readiness index and the coordinator to change it.
 
 ## Errors
 
@@ -609,12 +666,12 @@ Implement an interface from `image-renditions/server` and pass your implementati
 - To process images with another library, implement `Processor` and pass it as `processor`.
   Implement its `assertRecipe()` to reject recipes it cannot render, such as animations, when the server is created.
   Return `degradation` from its `process()` to report an image that falls short of its recipe to `onDegradation`.
-- To share the index of published renditions between replicas, for example in Redis, implement `ReadinessIndex` and pass it as `readiness.shared`.
+- To share the index of published renditions between replicas in a database other than Redis, implement `ReadinessIndex` and pass it as `readiness.shared`.
   If a call fails or exceeds `indexTimeout`, the server reports the error to `onError` and checks storage instead, while [outdated URLs](#outdated-urls) fail as `unknown-recipe`.
-- To render each rendition once across replicas, implement `Coordinator` as a shared lock and pass it as `coordinator`.
+- To render each rendition once across replicas without Redis, implement `Coordinator` as a shared lock and pass it as `coordinator`.
   Bound the wait for the lock, because the server sets no timeout on it.
 
-The built-in stores and processor implement the same interfaces and serve as examples.
+The built-in stores, processor, readiness index and coordinator implement the same interfaces and serve as examples.
 
 ## Limitations
 
