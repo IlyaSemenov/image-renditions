@@ -17,7 +17,16 @@ Resize and re-encode uploaded images when a page first shows them, store each re
 />
 ```
 
-- The first request for such a URL renders a 48×48 AVIF from `avatars/42.jpg`, writes it to storage, and redirects the browser to the stored file.
+The handler redirects such a URL to the stored file:
+
+```http
+GET /_renditions/v1/avatar.faf7e221f65d.avif/avatars/42.jpg HTTP/1.1
+
+HTTP/1.1 307 Temporary Redirect
+Location: https://renditions.example.com/avatars/42.jpg/faf7e221f65d.avif
+```
+
+- The first request for such a URL renders a 48×48 AVIF from `avatars/42.jpg` and writes it to storage before the redirect.
 - Later requests redirect at once, and your bucket or CDN serves the image.
 - Changing the `avatar` preset gives it new URLs, so no browser or CDN keeps showing the old version.
 
@@ -27,7 +36,7 @@ The library is modular, with pluggable parts:
 
 - [HTTP](#h3-and-other-frameworks): an event handler for h3 1.15 or newer and h3 2, and a framework-neutral handler for other servers.
 - [Processing](#processing): a processor built on sharp.
-- [Storage](#storage): an S3 bucket or a file system directory, chosen separately for uploads and renditions.
+- [Storage](#storage): an S3 bucket or a file system directory for uploads, with renditions in another one, in a [folder of their own](#s3-storage), or [next to each upload](#scopes).
 - [Nuxt](#quick-start): a Nuxt 4 module that registers the handler and the `<RenditionImg>` component.
 - [Extending](#extending): other storage, image libraries, and state shared between replicas plug in through the interfaces of `image-renditions/server`.
 
