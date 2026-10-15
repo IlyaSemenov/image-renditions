@@ -7,7 +7,7 @@ import { defineRenditionEventHandler } from "image-renditions/h3"
 
 import { catalog, createFakes } from "./fakes"
 
-const target = { scope: "t", path: "uploads/1/фото.jpg" } as const
+const target = { scope: "tenant", path: "uploads/1/фото.jpg" } as const
 
 function createOptions() {
   const fakes = createFakes()

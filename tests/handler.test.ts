@@ -19,7 +19,7 @@ import {
 } from "./fakes"
 
 const tenant = { tenant: "acme" }
-const target = { scope: "t", path: "uploads/1/photo.jpg" } as const
+const target = { scope: "tenant", path: "uploads/1/photo.jpg" } as const
 
 let fakes: ReturnType<typeof createFakes>
 
@@ -79,7 +79,7 @@ describe("failures", () => {
 
     const response = await get(
       createHandler(),
-      `/_renditions/v1/t/${target.path}/avatar.${hash}.avif`,
+      `/_renditions/v1/tenant/${target.path}/avatar.${hash}.avif`,
     )
 
     expect(response.status).toBe(404)
@@ -93,7 +93,7 @@ describe("failures", () => {
 
     const response = await get(
       createHandler({ onFailure }),
-      `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(32)}.avif`,
+      `/_renditions/v1/tenant/${target.path}/avatar.${"0".repeat(32)}.avif`,
     )
 
     expect(response.status).toBe(404)
@@ -110,7 +110,7 @@ describe("failures", () => {
       onFailure: failure => void failures.push(failure),
     })
 
-    await get(handler, `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(12)}.avif`)
+    await get(handler, `/_renditions/v1/tenant/${target.path}/avatar.${"0".repeat(12)}.avif`)
     await get(handler, "/_renditions/v1/malformed")
 
     expect(failures.map(({ reason, source }) => ({ reason, source }))).toEqual([
@@ -136,7 +136,7 @@ describe("failures", () => {
 
     const response = await get(
       handler,
-      `/_renditions/v1/t/${target.path}/avatar.${"0".repeat(12)}.avif`,
+      `/_renditions/v1/tenant/${target.path}/avatar.${"0".repeat(12)}.avif`,
     )
 
     expect(response.status).toBe(302)
@@ -189,7 +189,7 @@ describe("failures", () => {
     const running = get(handler, catalog.url("avatar", target))
     const response = await get(
       handler,
-      catalog.url("avatar", { scope: "t", path: "uploads/2/other.jpg" }),
+      catalog.url("avatar", { scope: "tenant", path: "uploads/2/other.jpg" }),
     )
     processing.resolve()
 
@@ -250,14 +250,14 @@ describe("context", () => {
 
 describe("catalog scopes", () => {
   const scopedCatalog = defineCatalog({
-    scopes: ["t", "g"],
+    scopes: ["tenant", "global"],
     presets: { avatar: { width: 64, height: 64 } },
   })
-  const url = scopedCatalog.url("avatar", { scope: "t", path: target.path })
+  const url = scopedCatalog.url("avatar", { scope: "tenant", path: target.path })
 
   function createScopedHandler() {
     const resolved: unknown[] = []
-    const failures: RenditionFailure<TestContext, "t" | "g">[] = []
+    const failures: RenditionFailure<TestContext, TestScope>[] = []
     const handler = createRenditionHandler({
       server: fakes.createServer({
         catalog: scopedCatalog,
@@ -283,7 +283,10 @@ describe("catalog scopes", () => {
   test("rejects urls of other scopes before resolving their targets, reading the scope from the first segment", async () => {
     const { handler, resolved, failures } = createScopedHandler()
 
-    for (const path of [url.replace("/v1/t/", "/v1/x/"), url.replace("/v1/t/", "/v1/")]) {
+    for (const path of [
+      url.replace("/v1/tenant/", "/v1/other/"),
+      url.replace("/v1/tenant/", "/v1/"),
+    ]) {
       const response = await get(handler, path)
       expect(response.status).toBe(404)
       expect(await response.text()).toBe("invalid-request")
@@ -292,7 +295,7 @@ describe("catalog scopes", () => {
     expect(resolved).toEqual([])
     expect(fakes.storageCalls()).toBe(0)
     expect(failures.map(({ address, target }) => [address?.scope, address?.path, target])).toEqual([
-      ["x", target.path, undefined],
+      ["other", target.path, undefined],
       ["uploads", "1/photo.jpg", undefined],
     ])
   })
@@ -302,6 +305,6 @@ describe("catalog scopes", () => {
 
     await get(handler, url.replace(/\.avif$/, ".webp"))
 
-    expect(failures[0]?.target).toEqual({ scope: "t", path: target.path })
+    expect(failures[0]?.target).toEqual({ scope: "tenant", path: target.path })
   })
 })

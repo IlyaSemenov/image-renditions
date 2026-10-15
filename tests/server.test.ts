@@ -13,7 +13,7 @@ import {
 } from "./fakes"
 
 const tenant = { tenant: "acme" }
-const target = { scope: "t", path: "uploads/1/photo.jpg" } as const
+const target = { scope: "tenant", path: "uploads/1/photo.jpg" } as const
 const avatar = catalog.variant("avatar").recipe
 
 let fakes: ReturnType<typeof createFakes>
@@ -110,7 +110,7 @@ describe("ensure", () => {
     const server = fakes.createServer()
 
     const scoped = await server.ensure(avatar, target, tenant)
-    const global = await server.ensure(avatar, { ...target, scope: "g" }, tenant)
+    const global = await server.ensure(avatar, { ...target, scope: "global" }, tenant)
 
     expect(scoped.key).not.toBe(global.key)
     expect(fakes.results.get(scoped.key)?.data).toEqual(new Uint8Array([1]))
@@ -121,7 +121,7 @@ describe("ensure", () => {
     const server = fakes.createServer()
 
     const failure = await server
-      .ensure(avatar, { scope: "t", path: "uploads/2/missing.jpg" }, tenant)
+      .ensure(avatar, { scope: "tenant", path: "uploads/2/missing.jpg" }, tenant)
       .catch((error: unknown) => error)
 
     expect((failure as RenditionError).reason).toBe("source-not-found")
@@ -142,7 +142,7 @@ describe("ensure", () => {
         },
       },
     })
-    const other = { scope: "g", path: "uploads/1/photo.jpg" } as const
+    const other = { scope: "global", path: "uploads/1/photo.jpg" } as const
 
     const failures = await Promise.all(
       [target, target, other].map(item =>
@@ -318,7 +318,7 @@ describe("resolve", () => {
   test("rejects a scope the catalog does not declare without calling the resolver", async () => {
     let resolved = 0
     const server = fakes.createServer({
-      catalog: defineCatalog({ scopes: ["t"], presets: { avatar: { width: 64 } } }),
+      catalog: defineCatalog({ scopes: ["tenant"], presets: { avatar: { width: 64 } } }),
       resolveSource: () => {
         resolved++
         return { sourceKey: target.path }
@@ -327,7 +327,7 @@ describe("resolve", () => {
 
     const failure = await server
       // @ts-expect-error The scope is not declared.
-      .resolve({ scope: "g", path: target.path }, tenant)
+      .resolve({ scope: "global", path: target.path }, tenant)
       .catch((error: unknown) => error)
 
     expect((failure as RenditionError).reason).toBe("invalid-request")
@@ -478,7 +478,7 @@ describe("limits", () => {
     fakes.control.processing = processing.promise
 
     const [running, queued, rejected] = paths.map(path =>
-      server.ensure(avatar, { scope: "t", path }, tenant).catch((error: unknown) => error),
+      server.ensure(avatar, { scope: "tenant", path }, tenant).catch((error: unknown) => error),
     )
 
     expect(((await rejected) as RenditionError).reason).toBe("overloaded")
@@ -513,9 +513,9 @@ describe("limits", () => {
     const processing = createDeferred()
     fakes.control.processing = processing.promise
 
-    const running = server.ensure(avatar, { scope: "t", path: paths[0]! }, tenant)
+    const running = server.ensure(avatar, { scope: "tenant", path: paths[0]! }, tenant)
     const waiting = await server
-      .ensure(avatar, { scope: "t", path: paths[1]! }, tenant)
+      .ensure(avatar, { scope: "tenant", path: paths[1]! }, tenant)
       .catch((error: unknown) => error)
 
     expect((waiting as RenditionError).reason).toBe("overloaded")

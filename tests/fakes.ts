@@ -12,7 +12,7 @@ export interface TestContext {
   tenant: string
 }
 
-export const scopes = ["t", "g"] as const
+export const scopes = ["tenant", "global"] as const
 
 export type TestScope = (typeof scopes)[number]
 
@@ -23,12 +23,12 @@ export const presets = {
 
 export const catalog = defineCatalog({ scopes, presets })
 
-/** Maps the `t` scope to the context tenant and the `g` scope to global storage. */
+/** Maps the `tenant` scope to the context tenant and the `global` scope to global storage. */
 export function resolveSource(
   { scope, path }: RenditionTarget,
   { tenant }: TestContext,
 ): SourceResolution | undefined {
-  const prefix = scope === "t" ? `tenant/${tenant}/` : scope === "g" ? "" : undefined
+  const prefix = scope === "tenant" ? `tenant/${tenant}/` : scope === "global" ? "" : undefined
   return prefix === undefined
     ? undefined
     : { sourceKey: `${prefix}${path}`, renditionPrefix: `${prefix}derived/${path}` }
