@@ -609,6 +609,7 @@ The lock only saves work: when Redis fails or does not reply in time, the coordi
 If a lock is lost, for example on a Sentinel failover, the worst case is that two replicas render the same rendition.
 
 Keys start with `image-renditions:`; pass `prefix` to the readiness index and the coordinator to change it.
+With Redis ACL, the user needs access to the keys under the prefix, such as `~image-renditions:*`, and to the commands `GET`, `SET`, `PEXPIRE`, `DEL` and `EVAL`.
 
 ## Errors
 

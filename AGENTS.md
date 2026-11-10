@@ -26,6 +26,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Keep `jiti` a regular dependency: the Nuxt module must resolve it from this package under isolated installs.
 - Keep `src/server/` independent of storage, processor and framework; it owns the store and processor contracts.
 - Keep `src/redis/` free of Redis client libraries: it reaches Redis only through the `sendCommand` function the application passes.
+- Keep the Redis ACL commands listed in README in sync with the commands `src/redis/` sends, including those its Lua scripts call.
 - Put each store implementation in `src/stores/` and each processor in `src/processors/`, and ship each as its own entry; `tests/entry-imports.test.ts` checks that the server imports no such library.
 - Put an integration that implements several contracts, such as `src/redis/`, at the top level of `src/` rather than in a folder of one contract, and ship it as one entry.
 - Keep the h3 adapter working with h3 v1 and v2: `tests/h3.test.ts` runs it on both, and `tests/h3-v1/` typechecks it against h3 v1.
