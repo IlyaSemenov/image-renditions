@@ -4,7 +4,7 @@
 
 On-demand image transformations that persist every result to durable storage and keep app servers stateless.
 
-Read [README.md](README.md) completely before changing the public API, package behavior, supported runtimes, or user documentation.
+Read the user documentation in [docs/](docs/) completely before changing the public API, package behavior, supported runtimes, or user documentation.
 
 Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas.
 Do not catalog files or restate information evident from their names and locations.
@@ -26,7 +26,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Keep `jiti` a regular dependency: the Nuxt module must resolve it from this package under isolated installs.
 - Keep `src/server/` independent of storage, processor and framework; it owns the store and processor contracts.
 - Keep `src/redis/` free of Redis client libraries: it reaches Redis only through the `sendCommand` function the application passes.
-- Keep the Redis ACL commands listed in README in sync with the commands `src/redis/` sends, including those its Lua scripts call.
+- Keep the Redis ACL commands listed in `docs/replicas.md` in sync with the commands `src/redis/` sends, including those its Lua scripts call.
 - Put each store implementation in `src/stores/` and each processor in `src/processors/`, and ship each as its own entry; `tests/entry-imports.test.ts` checks that the server imports no such library.
 - Put an integration that implements several contracts, such as `src/redis/`, at the top level of `src/` rather than in a folder of one contract, and ship it as one entry.
 - Keep the h3 adapter working with h3 v1 and v2: `tests/h3.test.ts` runs it on both, and `tests/h3-v1/` typechecks it against h3 v1.
@@ -36,7 +36,10 @@ Do not catalog files or restate information evident from their names and locatio
 
 ## Documentation
 
-- Write public README and JSDoc text for package users who do not know the implementation.
+- Keep user documentation in the VitePress site in `docs/`, published to GitHub Pages; keep `README.md` short and link to the site.
+- Add every new page to the sidebar in `docs/.vitepress/config.ts`.
+- Update the affected site pages together with a change to the public API or behavior.
+- Write public documentation and JSDoc text for package users who do not know the implementation.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
 - Add inline comments beside every non-obvious invariant, algorithmic choice, safety constraint, and intentionally limited behavior.
 - Update nearby JSDoc and inline comments whenever the documented code changes, and remove comments that no longer apply.
@@ -84,3 +87,4 @@ Describe the user-visible change.
   The Redis tests use the Redis at `REDIS_URL` and wipe its database; without `REDIS_URL` they start their own `redis-server`, which must be on `PATH`.
 - Run the `build` script when package exports, declarations, or supported runtimes change.
 - Run the `test:nuxt` script when the Nuxt module, its runtime, or the package entries it imports change; it builds the package and a Nuxt fixture app.
+- Run the `docs:build` script when site pages or the VitePress configuration change.
