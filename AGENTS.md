@@ -6,7 +6,11 @@ On-demand image transformations that persist every result to durable storage and
 
 Read the user documentation in [docs/](docs/) completely before changing the public API, package behavior, supported runtimes, or user documentation.
 
-Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas.
+Read the relevant guide in [development/](development/README.md) before starting:
+
+- [user-documentation.md](development/user-documentation.md) before changing user documentation.
+
+Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas that most changes need; put those of one topic in a guide in development/, and list the guide in its index and above with the task that needs it.
 Do not catalog files or restate information evident from their names and locations.
 
 ## Scope
@@ -36,8 +40,6 @@ Do not catalog files or restate information evident from their names and locatio
 
 ## Documentation
 
-- Keep user documentation in the VitePress site in `docs/`, published to GitHub Pages; keep `README.md` short and link to the site.
-- Add every new page to the sidebar in `docs/.vitepress/config.ts`.
 - Update the affected site pages together with a change to the public API or behavior.
 - Write public documentation and JSDoc text for package users who do not know the implementation.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
