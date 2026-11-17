@@ -4,7 +4,7 @@
 
 On-demand image transformations that persist every result to durable storage and keep app servers stateless.
 
-Read the user documentation in [docs/](docs/) completely before changing the public API, package behavior, supported runtimes, or user documentation.
+Before changing the public API, package behavior, supported runtimes, or user documentation, read the pages of the user documentation in [docs/](docs/) that the change affects.
 
 Read the relevant guide in [development/](development/README.md) before starting:
 
