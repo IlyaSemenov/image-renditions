@@ -1,5 +1,5 @@
-import { defineRenditionEventHandler } from "image-renditions/h3"
-import type { RenditionServer } from "image-renditions/server"
+import { defineRenditionEventHandler } from "./h3"
+import type { RenditionServer } from "./server/server"
 
 declare const contextFree: RenditionServer<unknown>
 declare const tenantServer: RenditionServer<{ tenant: string }>

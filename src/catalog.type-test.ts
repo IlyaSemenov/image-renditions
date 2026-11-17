@@ -1,4 +1,4 @@
-import { defineCatalog } from "image-renditions"
+import { defineCatalog } from "./catalog"
 
 const variant = defineCatalog({ presets: { avatar: { width: 48 } } }).variant("avatar")
 
