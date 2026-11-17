@@ -16,11 +16,16 @@ Do not catalog files or restate information evident from their names and locatio
 ## Scope
 
 - Keep production code in `src/`.
-- Keep focused module tests beside their source as `*.test.ts`.
-- Keep integration, package-boundary, and type-inference tests in `tests/`.
-- Name compile-only tests `*.type-test.ts`.
-- Keep `index.ts` files limited to explicit public re-exports.
+- Name a directory of one concept in the singular, such as `parser/`, and a directory of like items in the plural, such as `rules/`.
 - Keep a module of one file as a file, and turn a module of several files into a directory with an `index.ts`.
+- Keep focused module tests beside their source: `foo.test.ts` and `foo.type-test.ts` test `foo.ts`.
+- Test each behavior at the lowest level that can check it: a helper directly, a module that combines helpers by its own unit tests.
+- Keep a test of how several modules work together beside the module that combines them, or beside the modules it covers until such a module exists.
+- Keep a test helper that builds or reads internals beside them in `src/<module>/testing.ts`, so that nothing outside `src/` imports from `src/`.
+- Keep integration and package-boundary tests in `tests/`, importing the package by name: they see only the public API.
+- Name runtime tests `*.test.ts` and compile-only type tests `*.type-test.ts`.
+- Keep `index.ts` files limited to explicit public re-exports.
+- Export from each entry every type that the inferred types of its public values reference, so that the declarations of a consumer module can name them.
 - Treat `package.json` exports and supported runtimes as public contracts.
 
 ## Architecture
@@ -38,19 +43,32 @@ Do not catalog files or restate information evident from their names and locatio
 - Bump `RECIPE_ENGINE_VERSION` when processing of an unchanged recipe changes its output.
 - Key readiness indexes and coordination by the public URL of the rendition, which stays unique across stores.
 
+## Design
+
+- With every change, look for refactorings that reduce the complexity of the code it touches, such as duplicated logic or a concept spread over several modules.
+  Make those that ease the change, and propose the others in the final report, listed apart from its fixes.
+- Give a domain rule or contract a function of its own at its first use, such as how a cache key is built or which values an option accepts, so that the next use finds it; move such a function to a module of its own when several modules use it.
+  Do not extract code that only looks alike.
+- Split a module when it holds several distinct concepts that read better apart.
+- Before adding a helper, search for an existing one that does the same.
+
+## Refactoring
+
+- When moving or splitting code, move its tests to follow it.
+
 ## Documentation
 
 - Update the affected site pages together with a change to the public API or behavior.
 - Write public documentation and JSDoc text for package users who do not know the implementation.
+- When a change makes an existing statement false, fix that statement rather than add an explanation next to it.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
 - Add inline comments beside every non-obvious invariant, algorithmic choice, safety constraint, and intentionally limited behavior.
 - Update nearby JSDoc and inline comments whenever the documented code changes, and remove comments that no longer apply.
 - Do not narrate self-evident syntax or restate what a name already communicates.
-- Do not document obvious or implied defaults.
 - Describe a default only when readers need it to make a decision or avoid surprising behavior.
-- Use One Sentence Per Line for connected prose.
-- Keep semantically connected explanations as prose paragraphs.
-- Use lists for separate assertions instead of presenting them as prose paragraphs.
+- Use One Sentence Per Line for connected prose, including JSDoc and code comments: do not wrap a sentence across lines.
+- Keep semantically connected explanations as prose paragraphs, and use lists for separate assertions.
+- Link a file of another repository by a tag or a commit, such as of the version you checked, never by a branch such as `main`, whose file changes.
 
 ## Changesets
 
