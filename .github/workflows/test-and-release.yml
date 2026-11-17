@@ -6,7 +6,8 @@ env:
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+  pull_request:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -20,6 +21,7 @@ jobs:
   test-and-release:
     name: Test and Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       redis:
@@ -53,6 +55,9 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      - name: Lint package
+        run: bun run lint:check
+
       - name: Build package
         run: bun run build
 
@@ -66,6 +71,9 @@ jobs:
 
       - name: Test Nuxt module
         run: bun run test:nuxt
+
+      - name: Build docs
+        run: bun run docs:build
 
       - name: Capture release version
         if: ${{ github.ref == env.MAIN_REF }}
