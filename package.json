@@ -43,7 +43,7 @@
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "test:nuxt": "bun run build && bun tests/nuxt-build.ts",
-    "types": "tsc && tsc -p tests/tsconfig.json && tsc -p tests/h3-v1/tsconfig.json"
+    "types": "bun check && bun check -p tests && bun check -p tests/h3-v1"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
