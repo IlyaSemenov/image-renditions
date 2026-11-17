@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url"
+
 import { createJiti } from "jiti"
 import {
   addComponent,
@@ -83,6 +85,12 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       )
     }
     const originalUrlPath = originalUrl && (await resolvePath(originalUrl))
+    // The generated files live in the build directory of the app, which may not depend on this package itself,
+    // such as an app extending a layer that installs the module, so they import the runtime by its resolved path.
+    // The path keeps its extension, by which TypeScript finds the `.d.mts` types.
+    const runtimeSpecifier = JSON.stringify(
+      fileURLToPath(import.meta.resolve("image-renditions/nuxt/runtime")),
+    )
 
     if (handler) {
       addServerHandler({ route: `${catalog.basePath}/**`, handler: await resolvePath(handler) })
@@ -98,7 +106,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
           ...(originalUrlPath
             ? [`import useOriginalUrl from ${formatImportSpecifier(originalUrlPath)}`]
             : []),
-          `import { createRenditionHelpers } from "image-renditions/nuxt/runtime"`,
+          `import { createRenditionHelpers } from ${runtimeSpecifier}`,
           "",
           `export const { useRenditions, RenditionImg } = createRenditionHelpers(catalog, {`,
           `  defaultScope: ${JSON.stringify(defaultScope)},`,
@@ -115,7 +123,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       filename: "types/image-renditions.d.ts",
       getContents: () =>
         [
-          `declare module "image-renditions/nuxt/runtime" {`,
+          `declare module ${runtimeSpecifier} {`,
           `  interface RenditionRegister {`,
           `    catalog: typeof import(${formatImportSpecifier(catalogPath)}).default`,
           `  }`,
@@ -131,8 +139,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     const defineTemplate = addTemplate({
       filename: "image-renditions-define.ts",
       write: true,
-      getContents: () =>
-        `export { defineRenditionOriginalUrl } from "image-renditions/nuxt/runtime"\n`,
+      getContents: () => `export { defineRenditionOriginalUrl } from ${runtimeSpecifier}\n`,
     })
     addImports({ name: "defineRenditionOriginalUrl", from: defineTemplate.dst })
     addComponent({ name: "RenditionImg", export: "RenditionImg", filePath: template.dst })

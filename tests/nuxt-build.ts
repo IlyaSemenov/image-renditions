@@ -35,6 +35,20 @@ const typecheck = spawnSync(
 )
 assert.equal(typecheck.status, 0, "the fixture app does not typecheck")
 
+// An app extending the fixture as a layer gets the generated files without depending on the package itself:
+// its own `package.json` keeps the package from resolving by name through the repository.
+const layerApp = join(root, "tests/fixtures/nuxt-layer")
+const prepareLayerApp = spawnSync(process.execPath, ["run", "nuxt", "prepare", layerApp], {
+  stdio: "inherit",
+})
+assert.equal(prepareLayerApp.status, 0, "nuxt prepare of the layer app failed")
+const typecheckLayerApp = spawnSync(
+  process.execPath,
+  ["run", "tsc", "-p", join(layerApp, ".nuxt/tsconfig.app.json"), "--noEmit"],
+  { stdio: "inherit" },
+)
+assert.equal(typecheckLayerApp.status, 0, "the layer app does not typecheck")
+
 const storage = await mkdtemp(join(tmpdir(), "image-renditions-nuxt-"))
 await mkdir(join(storage, "uploads"))
 await sharp({ create: { width: 100, height: 80, channels: 3, background: "#f00" } })
