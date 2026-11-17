@@ -1,5 +1,12 @@
 # image-renditions
 
+## 0.9.1
+
+### Patch Changes
+
+- 7d6e9be: The Nuxt module typechecks in an app that extends a layer installing the module without depending on `image-renditions` itself.
+- 00c66cb: Mark the package as free of side effects, so that bundlers drop its unused modules.
+
 ## 0.9.0
 
 ### Minor Changes
